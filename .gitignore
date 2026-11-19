@@ -1,0 +1,7 @@
+# build outputs (CI attaches them to GitHub releases instead)
+/build/
+/MatrixRain.scr
+*.obj
+*.o
+*.res
+*.exe

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<screensaver name="matrixrain" _label="Matrix Rain">
+  <command arg="-root"/>
+  <_description>
+Matrix digital rain on the film's own pattern: a fixed grid, strings that
+grow downward, synchronized glyph swaps, deletion strings and sparse
+bright cursors. Settings live in ~/.config/matrixrain/config.yaml.
+  </_description>
+</screensaver>

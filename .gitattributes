@@ -1,0 +1,11 @@
+* text=auto
+# Used from WSL / Linux / macOS: keep LF even on a Windows checkout.
+Makefile text eol=lf
+*.sh text eol=lf
+platform/linux/** text eol=lf
+platform/macos/** text eol=lf
+engine/** text eol=lf
+tests/** text eol=lf
+# Windows-only scripts
+*.bat text eol=crlf
+*.ps1 text eol=crlf

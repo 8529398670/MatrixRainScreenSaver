@@ -1,0 +1,6 @@
+1.) make sure it matches the sources found in the README.md ,
+it should be the same as the movie
+
+2.) make sure it works with multiple monitors
+
+3.) cross-platform run/install scripts

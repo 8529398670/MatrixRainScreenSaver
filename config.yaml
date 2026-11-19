@@ -1,0 +1,43 @@
+# Matrix Rain screensaver — settings
+# Edit this file in Notepad, save, and the next time the rain runs it picks it up.
+# No restart or reinstall needed. A bad line is ignored, the rest still applies.
+#
+# speed_ms: how often the rain moves, in milliseconds (lower = faster). 20-150.
+speed_ms: 50
+# font_name: try "MS Gothic" (has the katakana), "Consolas", "Yu Gothic"...
+font_name: "MS Gothic"
+# font_size: glyph size in pixels. 12-32.
+font_size: 20
+# density_percent: how many columns are filled. 30-100.
+density_percent: 90
+# trail_min / trail_max: how long each falling column is, in glyphs.
+trail_min: 5
+trail_max: 25
+# fall_speed_min / fall_speed_max: rows each string grows per tick.
+# Film cadence is about one screen height in 6.7s, about 0.30-0.55 here.
+fall_speed_min: 0.30
+fall_speed_max: 0.55
+# flip_percent: chance each glyph is mirrored, like the film's. 0-100.
+flip_percent: 50
+# mutate_every_ticks: every N ticks ALL due glyphs swap at once (the
+# film's synchronized shimmer), with a one-frame cross-dissolve.
+mutate_every_ticks: 3
+# cursor_percent: chance a string gets a bright leading glyph (the
+# film has about 1 in 5). 0-100.
+cursor_percent: 20
+# Colours are #RRGGBB. head = the bright leading glyph, rain = the
+# main green, tail = the darkest end of the trail.
+head_color: "#E8FFE8"
+rain_color: "#00FF41"
+tail_color: "#00280A"
+background_color: "#000000"
+# exit_mouse_pixels: how far the mouse must move to wake the screen.
+exit_mouse_pixels: 5
+# debug_log: true writes a log (Windows: %LOCALAPPDATA%\MatrixRain\MatrixRain.log,
+# macOS: ~/Library/Logs/MatrixRain, Linux: ~/.local/state/matrixrain).
+debug_log: false
+# glyphs: the film's exact 53, from Carl Newton's frame-by-frame analysis
+# of the opening of The Matrix (1999): 30 mirrored half-width katakana,
+# the kanji 日, digits 0-9, Z, and 11 symbols. Comment this line out to
+# go back to the built-in set (all 56 half-width katakana + extras).
+glyphs: 'ﾊﾋｼﾂｳｰﾅﾐﾓﾆｻﾜｵﾘﾎﾏｴｷﾑﾃｹﾒｶﾕﾗｾﾈｽﾀﾇ日0123456789Z*+:=.<>"｜¦_'
