@@ -5,3 +5,6 @@
 *.o
 *.res
 *.exe
+
+# macOS Finder metadata
+.DS_Store
