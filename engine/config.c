@@ -7,13 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
-#define RAIN_DEFAULT_FONT "MS Gothic"
-#elif defined(__APPLE__)
-#define RAIN_DEFAULT_FONT "Hiragino Sans"
-#else
-#define RAIN_DEFAULT_FONT "Noto Sans CJK JP"
-#endif
+/* The bundled open font (fonts/open/), the same on every OS. Where it
+ * can't be loaded each OS falls back to its own Japanese font. */
+#define RAIN_DEFAULT_FONT "BIZ UDGothic"
 
 /* Built-in glyph set (used when config.yaml has no `glyphs:` line): all
  * 56 half-width katakana U+FF66-U+FF9D, digits, Z and symbols. */
@@ -666,8 +662,10 @@ char *config_default_text(const rain_config *c)
     sb_line(&b, "# speed_ms: how often the rain moves, in milliseconds (lower = faster).");
     sb_line(&b, "# 42 = one tick per film frame (24 fps). 20-150.");
     sb_kv_int(&b, "speed_ms", c->speed_ms);
-    sb_line(&b, "# font_name: needs half-width katakana. Windows: \"MS Gothic\";");
-    sb_line(&b, "# macOS: \"Hiragino Sans\"; Linux: \"Noto Sans CJK JP\" (fonts-noto-cjk).");
+    sb_line(&b, "# font_name: a font family with half-width katakana. Bundled with the");
+    sb_line(&b, "# saver (fonts/open/): \"BIZ UDGothic\", \"Noto Sans JP\", \"IPAGothic\".");
+    sb_line(&b, "# Or one the computer has: \"MS Gothic\" (Windows), \"Hiragino Sans\" (Mac).");
+    sb_line(&b, "# Glyphs are always drawn bold; don't add \"bold\" to the name.");
     sprintf(tmp, "font_name: \"%s\"", c->font_name);
     sb_line(&b, tmp);
     sb_line(&b, "# font_size: glyph size in pixels (scaled for high-DPI screens). 12-32.");

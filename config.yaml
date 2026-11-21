@@ -35,12 +35,14 @@ mutate_every_ticks: 4
 changing_percent: 40
 
 # ---- glyphs and look -------------------------------------------------
-# font_name: a font family name - "Hiragino Sans" (Mac), "MS Gothic"
-# (Windows), "Yu Gothic"... Glyphs are always drawn bold, so don't add
-# "bold" to the name (that's no family, and the Mac falls back to Helvetica).
-# A font this computer lacks falls back: MS Gothic on Windows, Helvetica
-# digits + Hiragino katakana on the Mac.
-font_name: "Hiragino Sans"
+# font_name: a font family with half-width katakana. Bundled with the
+# saver (fonts/open/, the same on every OS): "BIZ UDGothic" (default),
+# "Noto Sans JP", "IPAGothic". Or one the computer has: "MS Gothic"
+# (Windows), "Hiragino Sans" (Mac). Glyphs are always drawn bold, so
+# don't add "bold" to the name (that's no family name). A font the
+# computer lacks falls back: MS Gothic on Windows, Helvetica digits +
+# Hiragino katakana on the Mac, Noto Sans CJK JP etc. on Linux.
+font_name: "BIZ UDGothic"
 # font_size: glyph height in pixels. 12-32.
 font_size: 20
 # cell_width_percent: column width as a % of font_size. The film's glyphs

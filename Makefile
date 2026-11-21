@@ -45,6 +45,8 @@ install-linux: build/matrixrain
 	ln -sf ../libexec/xscreensaver/matrixrain $(DESTDIR)$(PREFIX)/bin/matrixrain
 	install -Dm755 platform/linux/matrixrain-idle $(DESTDIR)$(PREFIX)/bin/matrixrain-idle
 	install -Dm644 platform/linux/matrixrain.xml $(DESTDIR)$(PREFIX)/share/xscreensaver/config/matrixrain.xml
+	install -d $(DESTDIR)$(PREFIX)/share/matrixrain/fonts
+	install -m644 fonts/open/* $(DESTDIR)$(PREFIX)/share/matrixrain/fonts/
 	install -Dm644 platform/linux/matrixrain-idle.service $(DESTDIR)$(PREFIX)/lib/systemd/user/matrixrain-idle.service
 	@echo "Installed. xscreensaver: add 'matrixrain -root' to programs: in ~/.xscreensaver"
 	@echo "GNOME:       systemctl --user enable --now matrixrain-idle.service"
@@ -54,12 +56,14 @@ deb: build/matrixrain
 
 # ---- macOS ----------------------------------------------------------------
 SAVER = build/MatrixRain.saver
-$(SAVER)/Contents/MacOS/MatrixRain: $(ENGINE) $(ENGINE_H) platform/macos/MatrixRainView.m platform/macos/Info.plist | build
+$(SAVER)/Contents/MacOS/MatrixRain: $(ENGINE) $(ENGINE_H) platform/macos/MatrixRainView.m platform/macos/Info.plist $(wildcard fonts/open/*) | build
 	mkdir -p $(SAVER)/Contents/MacOS $(SAVER)/Contents/Resources
 	clang -fobjc-arc -O2 -Wall -bundle -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 \
 		-framework ScreenSaver -framework Cocoa -framework CoreText \
 		-o $@ $(ENGINE) platform/macos/MatrixRainView.m
 	cp platform/macos/Info.plist $(SAVER)/Contents/Info.plist
+	rm -rf $(SAVER)/Contents/Resources/fonts && mkdir -p $(SAVER)/Contents/Resources/fonts
+	cp fonts/open/* $(SAVER)/Contents/Resources/fonts/
 	codesign --force --sign - $(SAVER)
 
 macos: $(SAVER)/Contents/MacOS/MatrixRain

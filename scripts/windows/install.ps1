@@ -15,11 +15,22 @@ Copy-Item $scr 'C:\Windows\System32\MatrixRain.scr' -Force
 # next to the .scr, then %APPDATA%\MatrixRain\config.yaml).
 $config = "$root\config.yaml"
 [Environment]::SetEnvironmentVariable('MATRIXRAIN_CONFIG', $config, 'User')
-# Vendored fonts (fonts\vendor\, git-ignored), copied beside the per-user
+# Programs already running (and the idle timer) keep the old environment
+# until you sign out, so also make the per-user config a link to the repo's
+# (a real file already there is kept as config.yaml.bak). Needs admin,
+# which this script has.
+$userCfg = Join-Path $env:APPDATA 'MatrixRain\config.yaml'
+New-Item -ItemType Directory -Force (Split-Path $userCfg) | Out-Null
+$item = Get-Item $userCfg -Force -ErrorAction SilentlyContinue
+if ($item -and -not $item.LinkType) { Move-Item $userCfg "$userCfg.bak" -Force }
+elseif ($item) { Remove-Item $userCfg -Force }
+New-Item -ItemType SymbolicLink -Path $userCfg -Target $config | Out-Null
+# Bundled open fonts (fonts\open\) and vendored ones (fonts\vendor\,
+# git-ignored), copied beside the per-user
 # config too, so they still load if MATRIXRAIN_CONFIG is unset.
 $fontDir = Join-Path $env:APPDATA 'MatrixRain\fonts'
 New-Item -ItemType Directory -Force $fontDir | Out-Null
-Get-ChildItem (Join-Path $root 'fonts\vendor') -File -ErrorAction SilentlyContinue |
+Get-ChildItem (Join-Path $root 'fonts\vendor'),(Join-Path $root 'fonts\open') -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Extension -match '^\.(ttf|ttc|otf)$' } |
     ForEach-Object { Copy-Item $_.FullName $fontDir -Force; "Font: $($_.Name)" }
 

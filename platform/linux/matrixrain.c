@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/select.h>
 #include <time.h>
 #include <unistd.h>
@@ -128,8 +129,21 @@ static rain_atlas *build_atlas(void)
     unsigned long gmax = dv->green_mask >> gshift;
 
     if (!a) return NULL;
+    /* fontconfig always returns *some* font; keep the configured one only if
+     * it really is that family (a config shared with a Mac says "Hiragino
+     * Sans"), so a missing font doesn't put the digits in DejaVu Sans. */
     fonts[nf] = open_font(cfg.font_name, cell);
-    if (fonts[nf]) nf++;
+    if (fonts[nf]) {
+        FcChar8 *fam = NULL;
+        int k, same = 0; /* any of its family names (some are localized) */
+        for (k = 0; !same && FcPatternGetString(fonts[nf]->pattern, FC_FAMILY, k, &fam) == FcResultMatch; k++)
+            same = fam && !strcasecmp((const char *)fam, cfg.font_name);
+        if (same) nf++;
+        else {
+            rain_log("font: %s not installed, using the fallbacks", cfg.font_name);
+            XftFontClose(dpy, fonts[nf]);
+        }
+    }
     for (i = 0; i < NF - 1; i++) {
         XftFont *f = open_font(fallbacks[i], cell);
         if (f) fonts[nf++] = f;

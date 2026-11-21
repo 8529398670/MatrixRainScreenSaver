@@ -26,14 +26,20 @@ const char *rain_resolve_config(char *out, size_t n, const char *exe_dir);
  * log when debug_log is on. */
 void rain_load_config(rain_config *cfg, const char *exe_dir, char *loaded_from, size_t n);
 
-/* Folders to load extra (vendored) fonts from, most specific first:
- *   - `fonts` beside the user config file (install scripts copy
- *     fonts/vendor/ there: %APPDATA%\MatrixRain\fonts,
- *     ~/Library/.../MatrixRain/fonts, ~/.config/matrixrain/fonts)
- *   - `fonts/vendor` beside the config.yaml in use, after following a
- *     symlink - the repo's own folder when the config points at the repo.
- * Only folders that exist are returned. Returns how many. */
-#define RAIN_MAX_FONT_DIRS 2
+/* Folders to load extra fonts from (the bundled open fonts, and any
+ * vendored ones), most specific first. Only folders that exist are
+ * returned, each once:
+ *   - `fonts` beside the user config file (install scripts copy fonts
+ *     there: %APPDATA%\MatrixRain\fonts, ~/Library/.../MatrixRain/fonts,
+ *     ~/.config/matrixrain/fonts)
+ *   - `fonts/vendor` and `fonts/open` beside the config.yaml in use, after
+ *     following a symlink: the repo's own folders when the config is the
+ *     repo's
+ *   - `fonts` beside the program (inside the macOS .saver bundle, next to
+ *     the .scr) and, on Linux, <prefix>/share/matrixrain/fonts for a
+ *     program in <prefix>/libexec/xscreensaver.
+ * Returns how many. */
+#define RAIN_MAX_FONT_DIRS 6
 int rain_font_dirs(const char *exe_dir, char out[RAIN_MAX_FONT_DIRS][1024]);
 
 /* Log to the user log dir; a no-op unless debug_log was on at load. */

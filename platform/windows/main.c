@@ -164,6 +164,19 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
     if (!MultiByteToWideChar(CP_UTF8, 0, cfg->font_name, -1, face, RAIN_FONT_NAME_MAX)) wcscpy(face, L"MS Gothic");
     primary = make_font(face, cell);
     fallback = make_font(L"MS Gothic", cell);
+    /* A face this PC doesn't have (a config shared with a Mac says
+     * "Hiragino Sans") makes GDI substitute something like Courier New:
+     * draw everything in MS Gothic instead, not a mix of the two. */
+    {
+        wchar_t got[LF_FACESIZE];
+        HFONT prev = (HFONT)SelectObject(dc, primary);
+        if (!GetTextFaceW(dc, LF_FACESIZE, got) || _wcsicmp(got, face)) {
+            rain_log("font: %s not installed, using MS Gothic", cfg->font_name);
+            DeleteObject(primary);
+            primary = make_font(L"MS Gothic", cell);
+        }
+        SelectObject(dc, prev);
+    }
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, RGB(255, 255, 255));
 

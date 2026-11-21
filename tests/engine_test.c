@@ -298,6 +298,13 @@ static void test_config_parse(void)
     CHECK(c.glyph_count == 4 && c.glyphs[2] == ':' && c.glyphs_overridden);
 }
 
+static void test_default_font(void)
+{
+    rain_config c;
+    config_defaults(&c);
+    CHECK(!strcmp(c.font_name, "BIZ UDGothic")); /* bundled in fonts/open/ */
+}
+
 static void test_repo_config(void)
 {
     rain_config c = base_cfg();
@@ -307,7 +314,9 @@ static void test_repo_config(void)
     CHECK(c.glyphs[30] == 0x65E5); /* 日 */
     CHECK(c.speed_ms == 42);
     CHECK(c.flip_percent == 100 && !c.trail_fade);
-    CHECK(!strcmp(c.theme, "default") && c.rain_color == 0x00FF41 && c.theme_count == 4);
+    /* whichever theme it picks (you change it), it's one that exists */
+    CHECK(c.theme[0] && config_find_theme(&c, c.theme) >= 0 && c.theme_count >= 4);
+    CHECK(!strcmp(c.font_name, "BIZ UDGothic"));
 }
 
 static void test_themes(void)
@@ -527,6 +536,7 @@ int main(void)
     test_changing_strings();
     test_config_parse();
     test_repo_config();
+    test_default_font();
     test_themes();
     test_mix_theme();
     test_mix_weights();

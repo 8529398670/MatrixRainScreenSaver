@@ -26,10 +26,14 @@ its exact 53 glyphs.
 - `gitPushUpdate.bat` — commit everything, tag it `v1.0.N` (N = last
   commit message + 1), and push `main` to `origin`. Pass a message to
   use it instead: `gitPushUpdate.bat "msg"`.
+- `fonts/open/` — the bundled open fonts (BIZ UDGothic, the default;
+  Noto Sans JP; IPAGothic) and their licenses (see Fonts)
 - `fonts/matrix code nfi.ttf` — a fan font that was tried and not used (see Fonts)
 - `fonts/vendor/` — git-ignored: fonts you're licensed to use but that
   can't be published, like MS Gothic (see Fonts). Filled by
   `scripts/fetch-fonts.sh` / `scripts\windows\fetch-fonts.ps1`.
+- `scripts/macos/install-ms-gothic.sh` — installs MS Gothic for your Mac
+  user from Microsoft Office for Mac (`--use` also sets `font_name:`).
 
 ## Architecture
 A portable C engine with a thin native shell per OS. The animation is
@@ -307,9 +311,11 @@ katakana, mixed with Western Latin letters and numerals. Whiteley has
 said the katakana came from Japanese cookbooks and children's
 alphabet books — the "sushi recipes" story (Snopes rates the literal
 version "Mixture": the cookbooks were one input, the glyphs were
-hand-drawn and stylised). **No official version of the film's
-typeface was ever released** — so every font is an imitation, and the
-closest anyone can get is the glyph *set* itself.
+hand-drawn and stylised). **The film's typeface was never released as
+a font you can install.** The nearest thing is the glyph artwork in a
+2007 Flash file on the official *Path of Neo* game site, which
+Rezmason's project cleaned up into a font (see Fonts). Every other font
+is an imitation, and the closest it can get is the glyph *set* itself.
 
 Carl Newton went through the opening sequence of the first film frame
 by frame and wrote down every glyph he could identify:
@@ -340,22 +346,112 @@ the built-in set (all 56 half-width katakana U+FF66–U+FF9D + 0–9 + Z +
 symbols).
 
 ## Fonts
-- **MS Gothic (Windows default)** — ships with Windows, a real Japanese
-  font with full katakana/kanji coverage, including all 53 of the
-  film's glyphs. Where `font_name:` isn't installed, macOS draws digits
-  and symbols in its system font and katakana in Hiragino Sans, and
-  Linux uses Noto Sans CJK JP; any glyph a font lacks falls back to
-  another font that has it.
-- **Vendoring MS Gothic on macOS / Linux** — it's Microsoft's, licensed
-  with Windows and Office, so it can't go in this repo. To use your own
-  copy anyway, run `sh scripts/fetch-fonts.sh`. It finds `msgothic.ttc`
-  in Office for Mac, your font folders, or `C:\Windows\Fonts` under WSL,
-  or you pass it a file. The font goes in `fonts/vendor/`, which git
-  ignores. Then reinstall (`scripts/<os>/install.sh`). The saver loads
-  everything in `fonts/vendor/` for itself only, from beside the
-  config it reads (and from a `fonts/` copy beside the per-user config,
-  which is how the sandboxed macOS saver gets it). Builds and packages
-  never include these fonts.
+
+### The default: BIZ UDGothic, bundled
+The saver ships three open Japanese fonts in `fonts/open/`, with their
+licenses, and loads them for itself (nothing is installed system wide).
+The default is `font_name: "BIZ UDGothic"`, so **every OS draws the same
+glyphs**:
+
+| `font_name:` | Font | License | Look |
+|---|---|---|---|
+| `"BIZ UDGothic"` (default) | BIZ UDGothic Bold, Morisawa | SIL OFL 1.1 | Fixed-width, made as an MS Gothic replacement; close to the Windows look |
+| `"Noto Sans JP"` | Noto Sans JP Bold, Google / Adobe (Source Han Sans) | SIL OFL 1.1 | Modern gothic; close to the Mac's Hiragino Sans |
+| `"IPAGothic"` | IPAGothic, Japan's IPA | IPA Font License 1.0 | An older MS Gothic look-alike; regular weight only, so "bold" is synthesized |
+
+All three have all 53 of the film's glyphs (checked against each font's
+character table). Where they're loaded from:
+
+- **macOS:** inside the `.saver` bundle (`Contents/Resources/fonts`), so
+  even a downloaded release has them.
+- **Windows:** the repo's `fonts\open\` (through `MATRIXRAIN_CONFIG`), and
+  `install.ps1` copies them to `%APPDATA%\MatrixRain\fonts`. A lone
+  `MatrixRain.scr` without them falls back to MS Gothic.
+- **Linux:** `make install-linux` and the `.deb` put them in
+  `/usr/share/matrixrain/fonts`.
+
+Glyphs are always drawn bold, so `font_name:` is the plain family name
+(`"Hiragino Sans"`, not `"Hiragino Sans bold"`, which is no family).
+
+### Fonts the computers already have
+| OS | System font with the glyphs | Checked on |
+|---|---|---|
+| Windows | `"MS Gothic"` | HP EliteBook (ran it before BIZ UDGothic) |
+| macOS | `"Hiragino Sans"` (W6 is its bold) | M1 MacBook Pro, Mac mini (ran it before BIZ UDGothic) |
+| Linux | `"Noto Sans CJK JP"` (`fonts-noto-cjk`) | not checked yet |
+
+Before BIZ UDGothic was bundled, each OS defaulted to its own font,
+which is why the Windows rain looked different from the Macs'.
+
+When `font_name:` isn't installed or bundled:
+- **Windows** draws every glyph in MS Gothic.
+- **macOS** draws digits and symbols in its system font (Helvetica) and
+  katakana in Hiragino Sans: a visible mix. That's what
+  `font_name: "MS Gothic"` gave on a Mac without MS Gothic, and why two
+  Macs once looked different with the same code.
+- **Linux** skips it and uses the first installed of Noto Sans CJK JP,
+  IPAGothic, TakaoGothic, VL Gothic... for every glyph.
+
+The engine itself draws identically on every Mac: the same config and
+seed give pixel-identical frames. What still differs between computers
+is the font and the screen. A 2x Retina display draws each glyph with
+twice the pixels of a 1080p monitor, so it looks sharper.
+
+### MS Gothic on a Mac
+MS Gothic is Microsoft's, licensed with Windows and Office, so it can't
+go in this repo. Microsoft Office for Mac keeps a private copy inside each
+Office app, which only Office can see. To install it for your Mac user:
+
+    sh scripts/macos/install-ms-gothic.sh           # copy it to ~/Library/Fonts
+    sh scripts/macos/install-ms-gothic.sh --use     # ...and set font_name: "MS Gothic"
+
+No reinstall is needed; the saver uses it the next time it starts. Add
+`--vendor` to also copy it into `fonts/vendor/` for your other computers
+(below).
+
+### Vendoring a font you're licensed for
+`fonts/vendor/` is ignored by git, for fonts you may use but not
+publish. `sh scripts/fetch-fonts.sh` fills it with MS Gothic from Office
+for Mac, your font folders, or `C:\Windows\Fonts` under WSL, or copies
+the files you pass it (`scripts\windows\fetch-fonts.ps1` on Windows).
+Then run that OS's `install` script. The saver loads everything in
+`fonts/vendor/` for itself only (nothing is installed system wide), from
+beside the config it reads and from a `fonts/` copy beside the per-user
+config, which is how the sandboxed macOS saver gets it. Builds and
+packages never include these fonts.
+
+### Open fonts that were checked
+A font has to be free to put in this repo and contain the film's 53
+glyphs, which are *half-width* katakana (U+FF66–FF9D) plus 日, digits
+and a few symbols. Checked by reading each font's character table:
+
+| Font | License | The 53 glyphs | Half-width kana | Verdict |
+|---|---|---|---|---|
+| **BIZ UDGothic** (Morisawa) | SIL OFL | all 53 | 56 / 56 | Bundled, the default |
+| **Noto Sans JP** (Google / Adobe) | SIL OFL | all 53 | 56 / 56 | Bundled |
+| **IPAGothic** (IPA) | IPA Font License | all 53 | 56 / 56 | Bundled |
+| M PLUS 1 Code | SIL OFL | 22 of 53 | 0 / 56 | No half-width katakana: won't work |
+| Rezmason Matrix-Code | MIT (project) | 16 of 53 | 0 / 56 | The film's shapes, but its own glyph set (below) |
+| Hiragino Sans (Apple) | proprietary | all 53 | 56 / 56 | macOS only; can't be shared |
+| MS Gothic (Microsoft) | proprietary | all 53 | 56 / 56 | Windows / Office only; can't be shared |
+
+### Which font is closest to the film?
+None of the system fonts. The rain in *The Matrix* (1999) isn't set in a
+font you can buy: Simon Whiteley drew it for the film, as mirrored
+half-width katakana mixed with Western digits and letters, and a few of
+the symbols come from Susan Kare's Chicago typeface (the original Mac
+system font). Japanese gothic fonts like MS Gothic and Hiragino only get
+the *letters* right; the drawn shapes differ.
+
+The closest anyone has published is **Rezmason's Matrix-Code** (below):
+its glyphs are cleaned-up vectors from a 2007 SWF on the official
+*Path of Neo* promo site. It is the shape-accurate choice, but it maps
+its 34 katakana to *full-width* code points and is missing 37 of this
+saver's 53 glyphs as written, so using it means rewriting `glyphs:` to
+its own set. The frame-by-frame look (grid, swaps, cursors) matters at
+least as much as the font, and that's what this engine follows.
+
+### Fonts looked at for the film look
 - **Matrix Code NFI (tried, rejected)** — fan-made font from dafont
   (Norfok Incredible Font Design, free for personal use). Only 98
   characters, all Latin A–Z / a–z / 0–9 / punctuation drawn to *look*
@@ -377,6 +473,15 @@ symbols).
   code points instead of normal characters.
 
 ## Sources
+- **Fonts**: the half-width katakana set as the canonical Matrix
+  characters, and fans' font picks for terminal rain —
+  https://docs.rs/matrix-rain/0.2.0/src/matrix_rain/charset.rs.html,
+  https://git.asciimx.com/matrix-digital-rain/plain/README.txt;
+  Whiteley's custom typeface — https://en.wikipedia.org/wiki/Digital_rain;
+  the Chicago characters and the Path of Neo SWF —
+  https://github.com/Rezmason/matrix. Coverage in the open-fonts table
+  was checked against the fonts' own files from
+  https://github.com/google/fonts.
 - **The 53 glyphs + how the rain behaves** (frame-by-frame analysis
   of the first film's opening sequence): Carl Newton, "An analysis of
   the behaviour of the digital rain in The Matrix" —

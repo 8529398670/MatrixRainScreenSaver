@@ -185,13 +185,30 @@ static void strip_file(char *path)
     if (s) *s = 0; else path[0] = 0;
 }
 
+/* Add dir/sub to the list if it is a folder not already in it. */
+static void add_font_dir(char out[RAIN_MAX_FONT_DIRS][1024], int *n, const char *dir, const char *sub)
+{
+    char p[1024];
+    int i;
+    if (*n >= RAIN_MAX_FONT_DIRS || !dir || !*dir || !join(p, sizeof p, dir, sub) || !dir_exists(p)) return;
+#ifndef _WIN32
+    {
+        char real[PATH_MAX];
+        if (realpath(p, real) && strlen(real) < sizeof p) strcpy(p, real);
+    }
+#endif
+    for (i = 0; i < *n; i++)
+        if (!strcmp(out[i], p)) return;
+    strcpy(out[(*n)++], p);
+}
+
 int rain_font_dirs(const char *exe_dir, char out[RAIN_MAX_FONT_DIRS][1024])
 {
-    char cfg[1024], dir[1024];
+    char cfg[1024];
     int n = 0;
     if (rain_user_config_path(cfg, sizeof cfg)) {
         strip_file(cfg);
-        if (join(dir, sizeof dir, cfg, "fonts") && dir_exists(dir)) strcpy(out[n++], dir);
+        add_font_dir(out, &n, cfg, "fonts");
     }
     if (rain_resolve_config(cfg, sizeof cfg, exe_dir)) {
 #ifndef _WIN32
@@ -199,10 +216,13 @@ int rain_font_dirs(const char *exe_dir, char out[RAIN_MAX_FONT_DIRS][1024])
         if (realpath(cfg, real) && strlen(real) < sizeof cfg) strcpy(cfg, real);
 #endif
         strip_file(cfg);
-        if (*cfg && join(dir, sizeof dir, cfg, "fonts" SEP_STR "vendor") &&
-            dir_exists(dir) && (n == 0 || strcmp(dir, out[0])))
-            strcpy(out[n++], dir);
+        add_font_dir(out, &n, cfg, "fonts" SEP_STR "vendor");
+        add_font_dir(out, &n, cfg, "fonts" SEP_STR "open");
     }
+    add_font_dir(out, &n, exe_dir, "fonts");
+#if !defined(_WIN32) && !defined(__APPLE__)
+    add_font_dir(out, &n, exe_dir, "../../share/matrixrain/fonts");
+#endif
     return n;
 }
 
