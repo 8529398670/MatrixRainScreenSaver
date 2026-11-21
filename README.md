@@ -107,6 +107,9 @@ Screen Saver → Matrix Rain → Options (same three sliders, plus "Open
 config.yaml"). On Sonoma and later the screensaver runs sandboxed, so
 its config lives in
 `~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Application Support/MatrixRain/config.yaml`.
+When you wake the Mac the saver stops and its `legacyScreenSaver` host
+process quits (Sonoma and later otherwise leave it animating invisibly
+in the background, which eats CPU and slows unlocking).
 
 ### Debian / Ubuntu
 ```

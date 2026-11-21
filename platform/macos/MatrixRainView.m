@@ -67,7 +67,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
         asc = CTFontGetAscent(use);
         desc = CTFontGetDescent(use);
         // Draw straight into the atlas mask: row 0 of a bitmap context is the top.
-        ctx = CGBitmapContextCreate(atlas_mask(a, g, 0), (size_t)cell_w, (size_t)cell, 8, (size_t)cell_w, gray, kCGImageAlphaNone);
+        ctx = CGBitmapContextCreate(atlas_mask(a, g, 0), (size_t)cell_w, (size_t)cell, 8, (size_t)cell_w, gray, (CGBitmapInfo)kCGImageAlphaNone);
         if (ctx) {
             CGContextSetGrayFillColor(ctx, 0, 1);
             CGContextFillRect(ctx, CGRectMake(0, 0, cell_w, cell));
@@ -108,8 +108,38 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
 - (instancetype)initWithFrame:(NSRect)frame isPreview:(BOOL)isPreview
 {
     self = [super initWithFrame:frame isPreview:isPreview];
-    if (self) [self loadConfig];
+    if (self) {
+        [self loadConfig];
+        // Since Sonoma, legacyScreenSaver never calls stopAnimation when the
+        // user wakes the Mac: the view keeps animating invisibly behind the
+        // lock screen / desktop, burning CPU and making unlock sluggish, and
+        // every later run stacks another instance on top. The system posts
+        // this notification when the saver is dismissed, so stop for real.
+        if (!isPreview)
+            [[NSDistributedNotificationCenter defaultCenter] addObserver:self
+                                                                selector:@selector(saverWillStop:)
+                                                                    name:@"com.apple.screensaver.willstop"
+                                                                  object:nil];
+    }
     return self;
+}
+
+- (void)saverWillStop:(NSNotification *)note
+{
+    [self stopAnimation];
+    // legacyScreenSaver itself lingers after the saver closes; quit it so
+    // nothing keeps running in the background. A fresh one is launched the
+    // next time the screensaver starts. Only full-screen instances get here
+    // (previews in System Settings are not subscribed).
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        exit(0);
+    });
+}
+
+- (void)stopAnimation
+{
+    [super stopAnimation];
+    [self freeRain]; // drop the frame buffer + atlas while not running
 }
 
 - (void)freeRain
@@ -123,6 +153,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
 
 - (void)dealloc
 {
+    [[NSDistributedNotificationCenter defaultCenter] removeObserver:self];
     [self freeRain];
 }
 
@@ -168,7 +199,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
 
 - (void)animateOneFrame
 {
-    if (![self ensureSurface]) return;
+    if (!self.isAnimating || !self.window || ![self ensureSurface]) return;
     rain_tick(_rain);
     renderer_draw(_rr, _rain, _fb, _w, _h, _w, _full);
     _full = NO;
