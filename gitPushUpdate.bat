@@ -37,7 +37,7 @@ echo Committed "%~1" and tagged v1.0.%~1.
 
 :push
 rem Point origin at the MatrixRain repo (no-op if it already points there).
-git remote add origin git@github-8529398670:8529398670/MatrixRainWindowsScreenSaver.git 2>nul || git remote set-url origin git@github-8529398670:8529398670/MatrixRainScreenSaver.git
+git remote add origin git@github-8529398670:8529398670/MatrixRainScreenSaver.git 2>nul || git remote set-url origin git@github-8529398670:8529398670/MatrixRainScreenSaver.git
 
 git push origin --tags --force
 git push origin main

@@ -14,19 +14,25 @@
 #include <stdint.h>
 #include "rain.h"
 
-/* Coverage masks: one cell x cell byte image per glyph, plus mirrored
- * copies. Row 0 is the top of the glyph. */
+#define RAIN_VARIANTS 3   /* as drawn, mirrored left-right, upside down */
+#define RAIN_SHADES 9     /* see rain_cell_view.shade */
+
+/* Coverage masks: one cell_w x cell_h byte image per glyph and variant.
+ * Row 0 is the top of the glyph; a row is cell_w bytes. */
 typedef struct rain_atlas {
-    int cell;
+    int cell_w, cell_h;
     int glyph_count;
-    uint8_t *masks; /* glyph_count * 2 * cell * cell */
+    uint8_t *masks; /* glyph_count * RAIN_VARIANTS * cell_w * cell_h */
 } rain_atlas;
 
-rain_atlas *atlas_create(int cell, int glyph_count);
+rain_atlas *atlas_create(int cell_w, int cell_h, int glyph_count);
 void atlas_destroy(rain_atlas *a);
-uint8_t *atlas_mask(rain_atlas *a, int glyph, int flipped);
-/* Call after rasterizing every un-flipped mask: builds the mirrored ones. */
+uint8_t *atlas_mask(rain_atlas *a, int glyph, int variant);
+/* Call after rasterizing every variant-0 mask: builds the other variants. */
 void atlas_finish(rain_atlas *a);
+
+/* Cell size for a font size in device pixels and cfg->cell_width_percent. */
+void rain_cell_size(const rain_config *cfg, int font_px, int *cell_w, int *cell_h);
 
 typedef struct rain_renderer rain_renderer;
 
@@ -34,12 +40,13 @@ rain_renderer *renderer_create(const rain_config *cfg, rain_atlas *atlas);
 void renderer_destroy(rain_renderer *rr);
 
 /* Draw the current frame. Only cells that changed since the last call are
- * repainted unless `full` is set (first frame, after a resize or expose).
+ * repainted unless `full` is set (first frame, after a resize or expose);
+ * with glow on, the glow is then recomputed over the whole frame.
  * px is w x h with a row stride of stride_px pixels. Returns the number
  * of cells repainted. */
 int renderer_draw(rain_renderer *rr, const rain_t *r, uint32_t *px, int w, int h, int stride_px, int full);
 
-/* The 8 shade colours: [0] head, [1..7] rain -> tail. */
-void rain_shade_colors(const rain_config *cfg, uint32_t out[8]);
+/* The shade colours: [0] head, [1..7] rain -> tail, [8] half highlight. */
+void rain_shade_colors(const rain_config *cfg, uint32_t out[RAIN_SHADES]);
 
 #endif

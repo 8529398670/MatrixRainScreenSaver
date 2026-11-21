@@ -31,22 +31,28 @@ static int default_glyphs(uint32_t *out)
 void config_defaults(rain_config *c)
 {
     memset(c, 0, sizeof *c);
-    c->speed_ms = 50;
+    c->speed_ms = 42; /* one tick = one film frame at 24 fps */
     strcpy(c->font_name, RAIN_DEFAULT_FONT);
     c->font_size = 20;
+    c->cell_width_percent = 75;
     c->density = 90;
     c->trail_min = 5;
     c->trail_max = 25;
-    c->fall_min = 0.30;
-    c->fall_max = 0.55;
-    c->flip_percent = 50;
-    c->mutate_every_ticks = 3;
+    c->fall_min = 0.5;
+    c->fall_max = 1.0;
+    c->flip_percent = 100;
+    c->mutate_every_ticks = 4;
+    c->changing_percent = 40;
     c->cursor_percent = 20;
+    c->trail_fade = 0;
+    c->glow_percent = 60;
     c->head_color = 0xE8FFE8;
     c->rain_color = 0x00FF41;
     c->tail_color = 0x00280A;
     c->background_color = 0x000000;
     c->exit_mouse_pixels = 5;
+    c->wake_mouse_ms = 0;
+    c->wake_keys = 1;
     c->debug_log = 0;
     c->glyph_count = default_glyphs(c->glyphs);
     c->glyphs_overridden = 0;
@@ -169,6 +175,13 @@ static int clamp_int(const char *v, int lo, int hi, int def)
     return n < lo ? lo : n > hi ? hi : n;
 }
 
+static int parse_bool(const char *v, int def)
+{
+    if (ieq(v, "true") || ieq(v, "yes") || ieq(v, "on") || !strcmp(v, "1")) return 1;
+    if (ieq(v, "false") || ieq(v, "no") || ieq(v, "off") || !strcmp(v, "0")) return 0;
+    return def;
+}
+
 static double clamp_double(const char *v, double lo, double hi, double def)
 {
     double n;
@@ -233,10 +246,13 @@ static void apply(rain_config *c, const char *key, const char *val)
     else if (!strcmp(key, "tail_color")) c->tail_color = parse_color(val, c->tail_color);
     else if (!strcmp(key, "background_color")) c->background_color = parse_color(val, c->background_color);
     else if (!strcmp(key, "exit_mouse_pixels")) c->exit_mouse_pixels = clamp_int(val, 1, 100, c->exit_mouse_pixels);
-    else if (!strcmp(key, "debug_log")) {
-        if (ieq(val, "true") || ieq(val, "yes") || ieq(val, "on") || !strcmp(val, "1")) c->debug_log = 1;
-        else if (ieq(val, "false") || ieq(val, "no") || ieq(val, "off") || !strcmp(val, "0")) c->debug_log = 0;
-    }
+    else if (!strcmp(key, "wake_mouse_ms")) c->wake_mouse_ms = clamp_int(val, 0, 10000, c->wake_mouse_ms);
+    else if (!strcmp(key, "wake_keys")) c->wake_keys = clamp_int(val, 1, 50, c->wake_keys);
+    else if (!strcmp(key, "cell_width_percent")) c->cell_width_percent = clamp_int(val, 40, 100, c->cell_width_percent);
+    else if (!strcmp(key, "changing_percent")) c->changing_percent = clamp_int(val, 0, 100, c->changing_percent);
+    else if (!strcmp(key, "glow_percent")) c->glow_percent = clamp_int(val, 0, 100, c->glow_percent);
+    else if (!strcmp(key, "trail_fade")) c->trail_fade = parse_bool(val, c->trail_fade);
+    else if (!strcmp(key, "debug_log")) c->debug_log = parse_bool(val, c->debug_log);
     else if (!strcmp(key, "glyphs")) {
         if (*val) {
             int n = utf8_decode(val, c->glyphs, RAIN_MAX_GLYPHS);
@@ -369,7 +385,8 @@ char *config_default_text(const rain_config *c)
     sb_line(&b, "# Edit this file, save, and the next time the rain runs it picks it up.");
     sb_line(&b, "# No restart or reinstall needed. A bad line is ignored, the rest still applies.");
     sb_line(&b, "#");
-    sb_line(&b, "# speed_ms: how often the rain moves, in milliseconds (lower = faster). 20-150.");
+    sb_line(&b, "# speed_ms: how often the rain moves, in milliseconds (lower = faster).");
+    sb_line(&b, "# 42 = one tick per film frame (24 fps). 20-150.");
     sb_kv_int(&b, "speed_ms", c->speed_ms);
     sb_line(&b, "# font_name: needs half-width katakana. Windows: \"MS Gothic\";");
     sb_line(&b, "# macOS: \"Hiragino Sans\"; Linux: \"Noto Sans CJK JP\" (fonts-noto-cjk).");
@@ -377,21 +394,37 @@ char *config_default_text(const rain_config *c)
     sb_line(&b, tmp);
     sb_line(&b, "# font_size: glyph size in pixels (scaled for high-DPI screens). 12-32.");
     sb_kv_int(&b, "font_size", c->font_size);
+    sb_line(&b, "# cell_width_percent: column width as a % of font_size. The film's glyphs");
+    sb_line(&b, "# are taller than wide; 100 = square cells. 40-100.");
+    sb_kv_int(&b, "cell_width_percent", c->cell_width_percent);
     sb_line(&b, "# density_percent: how many columns are filled. 30-100.");
     sb_kv_int(&b, "density_percent", c->density);
     sb_line(&b, "# trail_min / trail_max: how long each falling column is, in glyphs.");
     sb_kv_int(&b, "trail_min", c->trail_min);
     sb_kv_int(&b, "trail_max", c->trail_max);
+    sb_line(&b, "# trail_fade: false = trails stay one brightness until the invisible");
+    sb_line(&b, "# deletion string behind them erases them (the 1999 film); true = they");
+    sb_line(&b, "# dim from rain_color to tail_color and time out (the sequels' look).");
+    sb_line(&b, c->trail_fade ? "trail_fade: true" : "trail_fade: false");
     sb_line(&b, "# fall_speed_min / fall_speed_max: rows each string grows per tick.");
-    sb_line(&b, "# Film cadence is about one screen height in 6.7s, which at 50ms");
-    sb_line(&b, "# ticks is roughly 0.30-0.55 rows per tick.");
+    sb_line(&b, "# Newton's frame counts suggest about one row per film frame; at");
+    sb_line(&b, "# speed_ms 42 that is 1.0. Not verified against the footage.");
     fmt_double(c->fall_min, d); sprintf(tmp, "fall_speed_min: %s", d); sb_line(&b, tmp);
     fmt_double(c->fall_max, d); sprintf(tmp, "fall_speed_max: %s", d); sb_line(&b, tmp);
-    sb_line(&b, "# flip_percent: chance each glyph is mirrored, like the film's. 0-100.");
+    sb_line(&b, "# flip_percent: chance each katakana is mirrored. The film mirrors all");
+    sb_line(&b, "# of them (100). Digits always follow the film: 2 5 9 mirrored, 3 6");
+    sb_line(&b, "# upside down, the rest as drawn. 0-100.");
     sb_kv_int(&b, "flip_percent", c->flip_percent);
-    sb_line(&b, "# mutate_every_ticks: every N ticks ALL due glyphs swap at once (the");
-    sb_line(&b, "# film's synchronized shimmer), with a one-frame cross-dissolve.");
+    sb_line(&b, "# mutate_every_ticks: every N ticks ALL changing glyphs swap at once");
+    sb_line(&b, "# (the film's synchronized shimmer), with a one-frame cross-dissolve.");
+    sb_line(&b, "# 4 = hold 3 frames + 1 overlap frame, as in the film.");
     sb_kv_int(&b, "mutate_every_ticks", c->mutate_every_ticks);
+    sb_line(&b, "# changing_percent: chance a string's glyphs keep changing; the others");
+    sb_line(&b, "# stay still. The film's share is not measured. 0-100.");
+    sb_kv_int(&b, "changing_percent", c->changing_percent);
+    sb_line(&b, "# glow_percent: strength of the soft glow around lit glyphs. 0 = none");
+    sb_line(&b, "# (also the fastest). 0-100.");
+    sb_kv_int(&b, "glow_percent", c->glow_percent);
     sb_line(&b, "# cursor_percent: chance a string gets a bright leading glyph (the");
     sb_line(&b, "# film has about 1 in 5). 0-100.");
     sb_kv_int(&b, "cursor_percent", c->cursor_percent);
@@ -403,6 +436,12 @@ char *config_default_text(const rain_config *c)
     sb_kv_color(&b, "background_color", c->background_color);
     sb_line(&b, "# exit_mouse_pixels: how far the mouse must move to wake the screen.");
     sb_kv_int(&b, "exit_mouse_pixels", c->exit_mouse_pixels);
+    sb_line(&b, "# wake_mouse_ms: the mouse must keep moving this long (ms) to wake the");
+    sb_line(&b, "# screen; a pause of half a second starts the count over. 0 = at once. 0-10000.");
+    sb_kv_int(&b, "wake_mouse_ms", c->wake_mouse_ms);
+    sb_line(&b, "# wake_keys: how many key presses or mouse clicks wake the screen. They");
+    sb_line(&b, "# must come within 2 seconds of each other; holding a key counts once. 1-50.");
+    sb_kv_int(&b, "wake_keys", c->wake_keys);
     sb_line(&b, "# debug_log: true writes a log to the user log folder (see README).");
     sb_line(&b, c->debug_log ? "debug_log: true" : "debug_log: false");
     sb_line(&b, "# glyphs: optional - override the built-in glyph set with your own string.");

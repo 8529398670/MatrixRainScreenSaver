@@ -21,11 +21,17 @@ typedef struct rain_config {
     int density;            /* % of columns filled, 30-100 */
     int trail_min, trail_max;      /* trail length in glyphs */
     double fall_min, fall_max;     /* rows per tick */
-    int flip_percent;       /* chance a glyph is mirrored */
+    int cell_width_percent; /* cell width as % of font_size (cells are font_size tall) */
+    int flip_percent;       /* chance a katakana is mirrored (digits follow the film) */
     int mutate_every_ticks; /* synchronized swap every N ticks */
+    int changing_percent;   /* chance a string's glyphs keep changing */
     int cursor_percent;     /* chance a string has a bright head */
+    int trail_fade;         /* 1 = trails dim with age and time out (sequels' look) */
+    int glow_percent;       /* bloom strength, 0 = none */
     uint32_t head_color, rain_color, tail_color, background_color; /* 0xRRGGBB */
-    int exit_mouse_pixels;
+    int exit_mouse_pixels;  /* moves smaller than this are ignored as jitter */
+    int wake_mouse_ms;      /* mouse must keep moving this long to wake, 0 = at once */
+    int wake_keys;          /* key presses / clicks needed to wake, 1 = the first */
     int debug_log;          /* 1 = write a log file in the user log dir */
     uint32_t glyphs[RAIN_MAX_GLYPHS]; /* Unicode code points */
     int glyph_count;

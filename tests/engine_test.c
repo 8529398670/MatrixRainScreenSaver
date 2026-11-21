@@ -51,7 +51,8 @@ static void test_glyphs_never_move(void)
                     CHECK(v.dissolving);
                     CHECK(v.swap_from == p.glyph);
                 }
-                CHECK(v.shade <= 7);
+                CHECK(v.shade <= 8);
+                CHECK(v.flipped <= 2);
                 CHECK(!v.visible || v.glyph < c.glyph_count);
                 prev[x * rows + y] = v;
                 born[x * rows + y] = b;
@@ -133,16 +134,17 @@ static void test_render(void)
 {
     rain_config c = base_cfg();
     rain_t *r = rain_create(8, 6, &c, 5);
-    rain_atlas *a = atlas_create(4, c.glyph_count);
+    rain_atlas *a = atlas_create(4, 4, c.glyph_count);
     rain_renderer *rr;
-    uint32_t px[32 * 20], shades[8];
+    uint32_t px[32 * 20], shades[RAIN_SHADES];
     int g, i, painted;
     for (g = 0; g < c.glyph_count; g++) {
         uint8_t *m = atlas_mask(a, g, 0);
         m[0] = 255; /* top-left pixel lit */
     }
     atlas_finish(a);
-    CHECK(atlas_mask(a, 0, 1)[3] == 255 && atlas_mask(a, 0, 1)[0] == 0);
+    CHECK(atlas_mask(a, 0, 1)[3] == 255 && atlas_mask(a, 0, 1)[0] == 0);   /* mirrored */
+    CHECK(atlas_mask(a, 0, 2)[12] == 255 && atlas_mask(a, 0, 2)[0] == 0);  /* upside down */
     rr = renderer_create(&c, a);
     painted = renderer_draw(rr, r, px, 32, 20, 32, 1);
     CHECK(painted > 0);
@@ -152,9 +154,108 @@ static void test_render(void)
     CHECK(renderer_draw(rr, r, px, 32, 20, 32, 0) == 0); /* nothing changed */
     rain_shade_colors(&c, shades);
     CHECK(shades[0] == 0xE8FFE8 && shades[1] == 0x00FF41 && shades[7] == 0x00280A);
+    CHECK(shades[8] == 0x74FF94); /* half way head -> rain */
     renderer_destroy(rr);
     atlas_destroy(a);
     rain_destroy(r);
+}
+
+/* Glow only adds light: it never darkens a pixel, never touches a frame
+ * with nothing lit, and glow_percent 0 leaves the plain render alone. */
+static void test_glow(void)
+{
+    rain_config c = base_cfg();
+    rain_t *r = rain_create(16, 8, &c, 11);
+    rain_atlas *a = atlas_create(6, 8, c.glyph_count);
+    rain_renderer *on, *off;
+    static uint32_t p_on[96 * 64], p_off[96 * 64];
+    int g, i, brighter = 0, darker = 0;
+    for (g = 0; g < c.glyph_count; g++) memset(atlas_mask(a, g, 0) + 6 * 3, 255, 6);
+    atlas_finish(a);
+    on = renderer_create(&c, a);
+    c.glow_percent = 0;
+    off = renderer_create(&c, a);
+    for (i = 0; i < 20; i++) rain_tick(r);
+    renderer_draw(on, r, p_on, 96, 64, 96, 1);
+    renderer_draw(off, r, p_off, 96, 64, 96, 1);
+    for (i = 0; i < 96 * 64; i++) {
+        int c1;
+        for (c1 = 0; c1 <= 16; c1 += 8) {
+            int x = (p_on[i] >> c1) & 255, y = (p_off[i] >> c1) & 255;
+            if (x > y) brighter++;
+            if (x < y) darker++;
+        }
+    }
+    CHECK(brighter > 0);
+    CHECK(darker == 0);
+    renderer_destroy(on);
+    renderer_destroy(off);
+    atlas_destroy(a);
+    rain_destroy(r);
+}
+
+/* The film's fixed orientations. */
+static void test_glyph_variants(void)
+{
+    CHECK(rain_glyph_variant(0xFF8A, 1) == 1); /* katakana: mirrored */
+    CHECK(rain_glyph_variant(0xFF8A, 0) == 0);
+    CHECK(rain_glyph_variant('2', 0) == 1 && rain_glyph_variant('5', 1) == 1 && rain_glyph_variant('9', 1) == 1);
+    CHECK(rain_glyph_variant('3', 1) == 2 && rain_glyph_variant('6', 1) == 2);
+    CHECK(rain_glyph_variant('0', 1) == 0 && rain_glyph_variant('7', 1) == 0 && rain_glyph_variant('Z', 1) == 0);
+    CHECK(rain_glyph_variant(0x65E5, 1) == 0); /* the kanji */
+}
+
+/* Without trail_fade, lit cells are one flat brightness, and trails still
+ * end (deletion strings eat them) so the screen never fills up. */
+static void test_flat_trails_end(void)
+{
+    rain_config c = base_cfg();
+    rain_t *r;
+    int t, x, y, lit = 0, total, other_shade = 0;
+    c.density = 100;
+    c.cursor_percent = 0;
+    r = rain_create(60, 40, &c, 3);
+    for (t = 0; t < 3000; t++) {
+        rain_tick(r);
+        for (x = 0; x < rain_cols(r); x++)
+            for (y = 0; y < rain_rows(r); y++) {
+                rain_cell_view v = rain_cell(r, x, y);
+                if (v.visible && v.shade != 1) other_shade++;
+            }
+    }
+    total = rain_cols(r) * rain_rows(r);
+    for (x = 0; x < rain_cols(r); x++)
+        for (y = 0; y < rain_rows(r); y++) lit += rain_cell(r, x, y).visible;
+    CHECK(other_shade == 0);
+    CHECK(lit > total / 10);
+    CHECK(lit < total * 8 / 10);
+    rain_destroy(r);
+}
+
+/* Glyph changes are grouped by string: with changing_percent 0 almost
+ * nothing changes; with 100 every visible glyph changes on a swap tick. */
+static void test_changing_strings(void)
+{
+    rain_config c = base_cfg();
+    int pass;
+    for (pass = 0; pass < 2; pass++) {
+        rain_t *r;
+        int t, x, y, vis = 0, dis = 0;
+        c.changing_percent = pass ? 100 : 0;
+        r = rain_create(40, 30, &c, 21);
+        for (t = 0; t < 400; t++) rain_tick(r);
+        while (rain_tick_count(r) % c.mutate_every_ticks) rain_tick(r);
+        for (x = 0; x < rain_cols(r); x++)
+            for (y = 0; y < rain_rows(r); y++) {
+                rain_cell_view v = rain_cell(r, x, y);
+                vis += v.visible;
+                dis += v.visible && v.dissolving;
+            }
+        CHECK(vis > 0);
+        if (pass) CHECK(dis > vis * 8 / 10); /* minus cells written this very tick */
+        else CHECK(dis < vis / 20 + 1);
+        rain_destroy(r);
+    }
 }
 
 static void test_config_parse(void)
@@ -175,6 +276,8 @@ static void test_config_parse(void)
         "tail_color: lime\n"
         "background_color: \"#GGGGGG\"\n" /* bad: keeps default */
         "debug_log: true\n"
+        "wake_mouse_ms: 1500\n"
+        "wake_keys: 0\n"               /* clamped to 1 */
         "unknown_key: 5\n"
         "no colon here\n"
         "glyphs: 'AB:C'\n");
@@ -190,6 +293,8 @@ static void test_config_parse(void)
     CHECK(c.tail_color == 0x00FF00);
     CHECK(c.background_color == 0x000000);
     CHECK(c.debug_log == 1);
+    CHECK(c.wake_mouse_ms == 1500);
+    CHECK(c.wake_keys == 1);
     CHECK(c.glyph_count == 4 && c.glyphs[2] == ':' && c.glyphs_overridden);
 }
 
@@ -200,7 +305,8 @@ static void test_repo_config(void)
     CHECK(c.glyph_count == 53);   /* the film's exact 53 */
     CHECK(c.glyphs[0] == 0xFF8A); /* ﾊ */
     CHECK(c.glyphs[30] == 0x65E5); /* 日 */
-    CHECK(c.speed_ms == 50);
+    CHECK(c.speed_ms == 42);
+    CHECK(c.flip_percent == 100 && !c.trail_fade);
 }
 
 static void test_default_text_roundtrip(void)
@@ -208,10 +314,12 @@ static void test_default_text_roundtrip(void)
     rain_config a = base_cfg(), b;
     char *text;
     a.speed_ms = 77; a.fall_min = 0.35; a.fall_max = 0.6; a.rain_color = 0x123456;
+    a.wake_mouse_ms = 2500; a.wake_keys = 4;
     text = config_default_text(&a);
     config_defaults(&b);
     config_parse(&b, text);
     CHECK(b.speed_ms == 77);
+    CHECK(b.wake_mouse_ms == 2500 && b.wake_keys == 4);
     CHECK(b.fall_min > 0.349 && b.fall_min < 0.351);
     CHECK(b.fall_max > 0.599 && b.fall_max < 0.601);
     CHECK(b.rain_color == 0x123456);
@@ -246,6 +354,10 @@ int main(void)
     test_deterministic();
     test_density_and_resize();
     test_render();
+    test_glow();
+    test_glyph_variants();
+    test_flat_trails_end();
+    test_changing_strings();
     test_config_parse();
     test_repo_config();
     test_default_text_roundtrip();

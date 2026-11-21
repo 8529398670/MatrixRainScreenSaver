@@ -30,9 +30,9 @@ static CTFontRef make_font(const char *family, CGFloat size)
     return font;
 }
 
-static rain_atlas *build_atlas(const rain_config *cfg, int cell)
+static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
 {
-    rain_atlas *a = atlas_create(cell, cfg->glyph_count);
+    rain_atlas *a = atlas_create(cell_w, cell, cfg->glyph_count);
     CTFontRef font;
     CGColorSpaceRef gray;
     int g;
@@ -67,14 +67,14 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
         asc = CTFontGetAscent(use);
         desc = CTFontGetDescent(use);
         // Draw straight into the atlas mask: row 0 of a bitmap context is the top.
-        ctx = CGBitmapContextCreate(atlas_mask(a, g, 0), (size_t)cell, (size_t)cell, 8, (size_t)cell, gray, kCGImageAlphaNone);
+        ctx = CGBitmapContextCreate(atlas_mask(a, g, 0), (size_t)cell_w, (size_t)cell, 8, (size_t)cell_w, gray, kCGImageAlphaNone);
         if (ctx) {
             CGContextSetGrayFillColor(ctx, 0, 1);
-            CGContextFillRect(ctx, CGRectMake(0, 0, cell, cell));
+            CGContextFillRect(ctx, CGRectMake(0, 0, cell_w, cell));
             CGContextSetShouldAntialias(ctx, true);
             CGContextSetShouldSmoothFonts(ctx, false);
             CGContextSetGrayFillColor(ctx, 1, 1);
-            pos = CGPointMake((cell - adv.width) / 2, (cell - (asc + desc)) / 2 + desc);
+            pos = CGPointMake((cell_w - adv.width) / 2, (cell - (asc + desc)) / 2 + desc);
             CTFontDrawGlyphs(use, glyphs, &pos, 1, ctx);
             CGContextRelease(ctx);
         }
@@ -92,7 +92,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
     rain_atlas *_atlas;
     rain_renderer *_rr;
     uint32_t *_fb;
-    int _w, _h, _cell;
+    int _w, _h, _cell, _cellW;
     BOOL _full;
     NSWindow *_sheet;
     NSSlider *_speed, *_size, *_density;
@@ -118,7 +118,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
     atlas_destroy(_atlas); _atlas = NULL;
     rain_destroy(_rain); _rain = NULL;
     free(_fb); _fb = NULL;
-    _w = _h = _cell = 0;
+    _w = _h = _cell = _cellW = 0;
 }
 
 - (void)dealloc
@@ -136,26 +136,28 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
 - (BOOL)ensureSurface
 {
     NSRect px = [self convertRectToBacking:self.bounds];
-    int w = (int)px.size.width, h = (int)px.size.height, cols, rows, cell;
+    int w = (int)px.size.width, h = (int)px.size.height, cols, rows, cell, cell_w;
     CGFloat scale = self.bounds.size.width > 0 ? px.size.width / self.bounds.size.width : 1;
     if (w < 1 || h < 1) return NO;
     cell = (int)(_cfg.font_size * scale + 0.5);
     if (self.isPreview) cell = cell / 2 < 8 ? 8 : cell / 2;
-    if (w == _w && h == _h && cell == _cell && _rain) return YES;
+    rain_cell_size(&_cfg, cell, &cell_w, &cell);
+    if (w == _w && h == _h && cell == _cell && cell_w == _cellW && _rain) return YES;
 
-    if (cell != _cell || !_atlas) {
+    if (cell != _cell || cell_w != _cellW || !_atlas) {
         renderer_destroy(_rr);
         atlas_destroy(_atlas);
-        _atlas = build_atlas(&_cfg, cell);
+        _atlas = build_atlas(&_cfg, cell_w, cell);
         _rr = _atlas ? renderer_create(&_cfg, _atlas) : NULL;
         _cell = cell;
+        _cellW = cell_w;
     }
     uint32_t *fb = realloc(_fb, (size_t)w * (size_t)h * sizeof(uint32_t));
     if (!fb || !_rr) return NO;
     _fb = fb;
     _w = w;
     _h = h;
-    rain_grid_for(w, h, cell, &cols, &rows);
+    rain_grid_for(w, h, cell_w, cell, &cols, &rows);
     if (!_rain) _rain = rain_create(cols, rows, &_cfg, arc4random());
     else rain_resize(_rain, cols, rows);
     _full = YES;

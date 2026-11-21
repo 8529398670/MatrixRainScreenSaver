@@ -40,7 +40,7 @@ static int depth;
 static GC gc;
 static XImage *img;
 static uint32_t *fb;
-static int fb_w, fb_h, cell;
+static int fb_w, fb_h, cell, cell_w; /* cell = glyph height, cell_w = column width */
 static rain_config cfg;
 static rain_t *rain;
 static rain_atlas *atlas;
@@ -113,7 +113,7 @@ static rain_atlas *build_atlas(void)
     XftDraw *draw;
     XftColor white, black;
     XRenderColor wc = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF }, bc = { 0, 0, 0, 0xFFFF };
-    rain_atlas *a = atlas_create(cell, cfg.glyph_count);
+    rain_atlas *a = atlas_create(cell_w, cell, cfg.glyph_count);
     int gshift = mask_shift(dv->green_mask);
     unsigned long gmax = dv->green_mask >> gshift;
 
@@ -126,7 +126,7 @@ static rain_atlas *build_atlas(void)
     }
     if (!nf) { atlas_finish(a); return a; }
 
-    pm = XCreatePixmap(dpy, RootWindow(dpy, scr), (unsigned)cell, (unsigned)cell, (unsigned)DefaultDepth(dpy, scr));
+    pm = XCreatePixmap(dpy, RootWindow(dpy, scr), (unsigned)cell_w, (unsigned)cell, (unsigned)DefaultDepth(dpy, scr));
     draw = XftDrawCreate(dpy, pm, dv, cm);
     XftColorAllocValue(dpy, dv, cm, &wc, &white);
     XftColorAllocValue(dpy, dv, cm, &bc, &black);
@@ -141,16 +141,16 @@ static rain_atlas *build_atlas(void)
         for (i = 0; i < nf; i++)
             if (XftCharExists(dpy, fonts[i], cp)) { f = fonts[i]; break; }
         XftTextExtents32(dpy, f, &cp, 1, &ext);
-        x = (cell - ext.xOff) / 2;
+        x = (cell_w - ext.xOff) / 2;
         y = (cell - (f->ascent + f->descent)) / 2 + f->ascent;
-        XftDrawRect(draw, &black, 0, 0, (unsigned)cell, (unsigned)cell);
+        XftDrawRect(draw, &black, 0, 0, (unsigned)cell_w, (unsigned)cell);
         XftDrawString32(draw, &white, f, x, y, &cp, 1);
-        gi = XGetImage(dpy, pm, 0, 0, (unsigned)cell, (unsigned)cell, AllPlanes, ZPixmap);
+        gi = XGetImage(dpy, pm, 0, 0, (unsigned)cell_w, (unsigned)cell, AllPlanes, ZPixmap);
         if (!gi) continue;
         for (py = 0; py < cell; py++)
-            for (px = 0; px < cell; px++) {
+            for (px = 0; px < cell_w; px++) {
                 unsigned long v = (XGetPixel(gi, px, py) & dv->green_mask) >> gshift;
-                mask[py * cell + px] = (uint8_t)(gmax ? v * 255 / gmax : 0);
+                mask[py * cell_w + px] = (uint8_t)(gmax ? v * 255 / gmax : 0);
             }
         XDestroyImage(gi);
     }
@@ -181,11 +181,11 @@ static int setup_surface(int w, int h)
     img = XCreateImage(dpy, visual, (unsigned)depth, ZPixmap, 0, (char *)fb, (unsigned)w, (unsigned)h, 32, w * 4);
     if (!img) return -1;
     img->byte_order = LSBFirst; /* our pixels are little-endian 0x00RRGGBB */
-    rain_grid_for(w, h, cell, &cols, &rows);
+    rain_grid_for(w, h, cell_w, cell, &cols, &rows);
     if (!rain) rain = rain_create(cols, rows, &cfg, (uint32_t)time(NULL) ^ ((uint32_t)getpid() << 16));
     else rain_resize(rain, cols, rows);
     full_redraw = 1;
-    rain_log("surface %dx%d cell=%d cols=%d rows=%d", w, h, cell, cols, rows);
+    rain_log("surface %dx%d cell=%dx%d cols=%d rows=%d", w, h, cell_w, cell, cols, rows);
     return rain ? 0 : -1;
 }
 
@@ -298,6 +298,7 @@ int main(int argc, char **argv)
 
     cell = cfg.font_size * xft_dpi() / 96;
     if (mode == MODE_HACK && w < 400) cell = cell / 2 < 8 ? 8 : cell / 2; /* xscreensaver preview */
+    rain_cell_size(&cfg, cell, &cell_w, &cell);
     gc = XCreateGC(dpy, win, 0, NULL);
     atlas = build_atlas();
     rr = atlas ? renderer_create(&cfg, atlas) : NULL;

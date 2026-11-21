@@ -52,11 +52,12 @@ Screen Saver Settings, multiple monitors, and macOS on real hardware.
 Edit `config.yaml`, save, and the next run picks it up; no restart or
 reinstall. A bad line is ignored and the rest still applies.
 
-Keys: `speed_ms`, `font_name`, `font_size`, `density_percent`,
-`trail_min`, `trail_max`, `fall_speed_min`, `fall_speed_max`,
-`flip_percent`, `mutate_every_ticks`, `cursor_percent`, `head_color`,
+Keys: `speed_ms`, `font_name`, `font_size`, `cell_width_percent`,
+`density_percent`, `trail_min`, `trail_max`, `trail_fade`,
+`fall_speed_min`, `fall_speed_max`, `flip_percent`, `mutate_every_ticks`,
+`changing_percent`, `glow_percent`, `cursor_percent`, `head_color`,
 `rain_color`, `tail_color`, `background_color`, `exit_mouse_pixels`,
-`debug_log`, and optional `glyphs` (override the glyph set).
+`wake_mouse_ms`, `wake_keys`, `debug_log`, and optional `glyphs` (override the glyph set).
 
 **Lookup order (all OSes):** the `MATRIXRAIN_CONFIG` env var →
 `config.yaml` next to the binary → the per-user file
@@ -84,7 +85,15 @@ Ready-built `.scr` files are attached to each GitHub release.
 
 - `MatrixRain.scr /s` runs it, `/c` opens settings (speed, glyph size,
   column density), `/p <hwnd>` draws the Screen Saver Settings preview.
-- It exits on a mouse move over `exit_mouse_pixels`, a click, or a key.
+  `/r out.bmp [ticks] [width] [height]` renders a frame to a file
+  without opening a window (for checking the look). Run it from a copy
+  renamed to `.exe`: Windows launches any `.scr` started through the
+  shell as `/s`, whatever the arguments.
+- It exits once the mouse has kept moving for `wake_mouse_ms` (moves under
+  `exit_mouse_pixels` are ignored), or after `wake_keys` key presses or
+  clicks within 2 seconds of each other. With `wake_mouse_ms: 0` and
+  `wake_keys: 1` any move, click or key wakes it. The Windows build reads
+  these two settings; the macOS and Linux builds still wake at once.
 - The process is named `MatrixRain.scr`, so `Get-Process MatrixRain`
   finds nothing; use `tasklist /FI "IMAGENAME eq MatrixRain.scr"`.
 
@@ -126,23 +135,37 @@ Carl Newton) shows the real pattern, and the engine follows it:
 - **Invisible prefixes.** About 1 in 10 strings travels 1–20 blank
   cells before its first visible glyph, so strings seem to appear out
   of nowhere partway down the screen.
-- **Synchronized mutation.** After ~3 frames a glyph can swap in
-  place, cross-dissolving (old + new at 50% for one frame). Every
-  changing glyph on the whole screen swaps on the SAME tick, then all
-  hold still — the grid breathes in unison instead of fizzing like
-  static. (`mutate_every_ticks`, default 3.)
-- **Deletion strings.** Invisible strings travel down columns writing
-  blanks, erasing visible strings from the top down. Trails don't
-  fade out — they get actively dissolved from above. (A deletion
-  string often follows a finished string to eat what's left.)
+- **Synchronized mutation.** Changing glyphs hold for 3 frames, then
+  swap in place with one frame where old and new overlap at 50% each
+  (fully lit where their strokes cross). Every changing glyph on the
+  whole screen swaps on the SAME frame — the grid breathes in unison
+  instead of fizzing like static. (`mutate_every_ticks`, default 4.)
+- **Only some strings change.** Whole strings are either "changing"
+  (every glyph swaps on every swap frame) or still (they barely
+  change). The film's split isn't measured; `changing_percent`,
+  default 40, is a guess to tune by eye.
+- **Deletion strings, no fading.** Every string is followed by an
+  invisible deletion string at about the same speed, writing blanks.
+  That is what ends a trail: in the first film trails stay one
+  brightness and get erased from the top, they don't dim. (`trail_fade:
+  true` switches to the sequels' dimming trails.)
 - **Cursors: only ~1 in 5 strings.** The bright white-green head is
   a cursor, and most strings don't have one — that's what gives the
-  rain depth. (`cursor_percent`, default 20.)
+  rain depth. When the head moves down, the cell it left keeps half the
+  highlight for one frame (Newton's "partially highlighted" frame).
+  (`cursor_percent`, default 20.)
 - **Cursor stammer.** Every so often ALL cursors hesitate on the same
   tick, falling one row behind, like the system briefly stalled.
-- **Cadence.** A string crosses the screen in about 6.7 seconds at
-  the film's default speed — `fall_speed_min/max` default 0.30/0.55
-  rows per tick at 50 ms ticks.
+- **Glow.** The film's look came largely from compositing: blurs and
+  glows over the code. The renderer adds a soft bloom (`glow_percent`,
+  0 turns it off; it costs roughly 10 ms per 1080p frame).
+- **Tall cells.** The glyphs are taller than they are wide; columns are
+  75% of the glyph height (`cell_width_percent`).
+- **Speed.** One tick is one film frame (`speed_ms: 42`, 24 fps), and
+  strings grow 0.5–1 row per frame. Newton's frame counts suggest about
+  one row per frame; the exact speed hasn't been measured against the
+  footage. (An earlier "6.7 seconds per screen" figure came from the
+  Matrix Desktop app, not the film.)
 - **The sound** (not part of the screensaver, but part of the film's
   effect): sound designer Dane A. Davis — who won the Academy Award
   for Best Sound Editing for the film — built the rain's sound from
@@ -182,8 +205,9 @@ sequence's count, not necessarily every glyph in the whole trilogy.
 The green matches old monochrome CRT text.
 
 **This build rains exactly those 53**: `config.yaml` carries them in
-its `glyphs:` line, with `flip_percent: 50` so half the glyphs are
-mirrored like the film's. Comment the `glyphs:` line out to go back to
+its `glyphs:` line, and draws each the way the film does: every
+katakana mirrored (`flip_percent: 100`), 2 5 9 mirrored, 3 6 flipped
+vertically, everything else as drawn. Comment the `glyphs:` line out to go back to
 the built-in set (all 56 half-width katakana U+FF66–U+FF9D + 0–9 + Z +
 symbols).
 

@@ -4,6 +4,7 @@
  *   MatrixRain.scr /s          run fullscreen across every monitor
  *   MatrixRain.scr /p <hwnd>   draw inside the Screen Saver Settings preview
  *   MatrixRain.scr /c[:hwnd]   settings dialog (writes config.yaml)
+ *   MatrixRain.scr /r out.bmp [ticks] [w] [h]   save a frame, no window (dev)
  *   (no arguments)             settings dialog
  *
  * The rain itself lives in engine/: this file only rasterizes the glyphs
@@ -38,11 +39,17 @@ static rain_t *g_rain;
 static rain_atlas *g_atlas;
 static rain_renderer *g_rr;
 static uint32_t *g_fb;
-static int g_w, g_h, g_cell;
+static int g_w, g_h, g_cw, g_ch; /* surface size, cell size */
 static int g_preview;
 static int g_full_redraw = 1;
-static POINT g_start_mouse;
+static POINT g_start_mouse;   /* last point a real (non-jitter) move was counted at */
 static int g_mouse_seen;
+static DWORD g_move_streak_start, g_move_last; /* current run of continuous movement */
+static int g_press_count;
+static DWORD g_press_last;
+
+#define WAKE_MOVE_GAP_MS 500   /* a pause this long ends a movement run */
+#define WAKE_PRESS_GAP_MS 2000 /* presses further apart than this start over */
 
 /* ---- setup helpers ---------------------------------------------------- */
 
@@ -82,6 +89,8 @@ static void find_exe_dir(void)
 
 static HFONT make_font(const wchar_t *face, int cell)
 {
+    /* Bold: MS Gothic regular is 1px strokes at these sizes, thinner than the
+     * film's; the glow then softens the edges. */
     return CreateFontW(-cell, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS,
                        CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FIXED_PITCH | FF_MODERN, face);
 }
@@ -97,9 +106,9 @@ static int has_glyph(HDC dc, wchar_t ch)
 /* Rasterize every glyph once (white on black, grayscale anti-aliasing) and
  * keep the green channel as coverage. Falls back to MS Gothic for any glyph
  * the configured font lacks. */
-static rain_atlas *build_atlas(const rain_config *cfg, int cell)
+static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
 {
-    rain_atlas *a = atlas_create(cell, cfg->glyph_count);
+    rain_atlas *a = atlas_create(cell_w, cell, cfg->glyph_count);
     BITMAPINFO bi;
     void *bits = NULL;
     HDC dc;
@@ -112,7 +121,7 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
     if (!a) return NULL;
     memset(&bi, 0, sizeof bi);
     bi.bmiHeader.biSize = sizeof bi.bmiHeader;
-    bi.bmiHeader.biWidth = cell;
+    bi.bmiHeader.biWidth = cell_w;
     bi.bmiHeader.biHeight = -cell; /* top-down */
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
@@ -152,12 +161,12 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell)
         if (len == 1 && !has_glyph(dc, text[0])) SelectObject(dc, fallback);
         GetTextMetricsW(dc, &tm);
         GetTextExtentPoint32W(dc, text, len, &sz);
-        x = (cell - sz.cx) / 2;
+        x = (cell_w - sz.cx) / 2;
         y = (cell - tm.tmHeight) / 2;
-        memset(bits, 0, (size_t)cell * (size_t)cell * 4);
+        memset(bits, 0, (size_t)cell_w * (size_t)cell * 4);
         TextOutW(dc, x, y, text, len);
         GdiFlush();
-        for (i = 0; i < cell * cell; i++) mask[i] = (uint8_t)((px[i] >> 8) & 0xFF);
+        for (i = 0; i < cell_w * cell; i++) mask[i] = (uint8_t)((px[i] >> 8) & 0xFF);
         SelectObject(dc, oldfont);
     }
 
@@ -181,7 +190,7 @@ static int setup_surface(int w, int h)
     g_fb = fb;
     g_w = w;
     g_h = h;
-    rain_grid_for(w, h, g_cell, &cols, &rows);
+    rain_grid_for(w, h, g_cw, g_ch, &cols, &rows);
     if (!g_rain) {
         g_rain = rain_create(cols, rows, &g_cfg, GetTickCount() ^ (GetCurrentProcessId() << 16));
         if (!g_rain) return -1;
@@ -189,7 +198,7 @@ static int setup_surface(int w, int h)
         rain_resize(g_rain, cols, rows);
     }
     g_full_redraw = 1;
-    rain_log("surface %dx%d cell=%d cols=%d rows=%d", w, h, g_cell, cols, rows);
+    rain_log("surface %dx%d cell=%dx%d cols=%d rows=%d", w, h, g_cw, g_ch, cols, rows);
     return 0;
 }
 
@@ -243,17 +252,31 @@ static LRESULT CALLBACK rain_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             GetCursorPos(&p);
             if (!g_mouse_seen) { g_start_mouse = p; g_mouse_seen = 1; }
             else if (abs(p.x - g_start_mouse.x) > g_cfg.exit_mouse_pixels ||
-                     abs(p.y - g_start_mouse.y) > g_cfg.exit_mouse_pixels)
-                close_saver(hwnd);
+                     abs(p.y - g_start_mouse.y) > g_cfg.exit_mouse_pixels) {
+                /* A real move. Keep a run going while moves keep coming; wake
+                 * once the run has lasted wake_mouse_ms. */
+                DWORD now = GetTickCount();
+                g_start_mouse = p;
+                if (!g_move_streak_start || now - g_move_last > WAKE_MOVE_GAP_MS) g_move_streak_start = now;
+                g_move_last = now;
+                if (now - g_move_streak_start >= (DWORD)g_cfg.wake_mouse_ms) close_saver(hwnd);
+            }
         }
         return 0;
-    case WM_LBUTTONDOWN:
-    case WM_RBUTTONDOWN:
-    case WM_MBUTTONDOWN:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
-        close_saver(hwnd);
+        if (lp & (1L << 30)) return 0; /* auto-repeat from a held key: counts once */
+        /* fall through */
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN: {
+        DWORD now = GetTickCount();
+        if (!g_press_count || now - g_press_last > WAKE_PRESS_GAP_MS) g_press_count = 0;
+        g_press_count++;
+        g_press_last = now;
+        if (g_press_count >= g_cfg.wake_keys) close_saver(hwnd);
         return 0;
+    }
     case WM_DESTROY:
         KillTimer(hwnd, TIMER_ID);
         PostQuitMessage(0);
@@ -270,9 +293,12 @@ static int run_rain(HINSTANCE inst, HWND preview_parent)
     int x, y, w, h, dpi = system_dpi();
 
     g_preview = preview_parent != NULL;
-    g_cell = MulDiv(g_cfg.font_size, dpi, 96);
-    if (g_preview) g_cell = g_cell / 2 < 8 ? 8 : g_cell / 2; /* the preview box is tiny */
-    g_atlas = build_atlas(&g_cfg, g_cell);
+    {
+        int font_px = MulDiv(g_cfg.font_size, dpi, 96);
+        if (g_preview) font_px = font_px / 2 < 8 ? 8 : font_px / 2; /* the preview box is tiny */
+        rain_cell_size(&g_cfg, font_px, &g_cw, &g_ch);
+    }
+    g_atlas = build_atlas(&g_cfg, g_cw, g_ch);
     g_rr = g_atlas ? renderer_create(&g_cfg, g_atlas) : NULL;
     if (!g_rr) return 1;
 
@@ -446,6 +472,46 @@ static int run_settings(HINSTANCE inst, HWND owner)
     return 0;
 }
 
+/* ---- off-screen render (development) ---------------------------------- */
+
+/* MatrixRain.scr /r out.bmp [ticks] [width] [height]: run the rain without a
+ * window and save the last frame, for checking the look without taking
+ * over the screen. */
+static int run_render(const wchar_t *out, int ticks, int w, int h)
+{
+    BITMAPFILEHEADER fh;
+    BITMAPINFOHEADER ih;
+    HANDLE f;
+    DWORD n;
+    int t;
+    rain_cell_size(&g_cfg, g_cfg.font_size, &g_cw, &g_ch);
+    g_atlas = build_atlas(&g_cfg, g_cw, g_ch);
+    g_rr = g_atlas ? renderer_create(&g_cfg, g_atlas) : NULL;
+    if (!g_rr || setup_surface(w, h) != 0) return 1;
+    for (t = 0; t < ticks; t++) {
+        rain_tick(g_rain);
+        renderer_draw(g_rr, g_rain, g_fb, g_w, g_h, g_w, t == 0);
+    }
+    memset(&fh, 0, sizeof fh);
+    memset(&ih, 0, sizeof ih);
+    ih.biSize = sizeof ih;
+    ih.biWidth = w;
+    ih.biHeight = -h;
+    ih.biPlanes = 1;
+    ih.biBitCount = 32;
+    ih.biCompression = BI_RGB;
+    fh.bfType = 0x4D42;
+    fh.bfOffBits = sizeof fh + sizeof ih;
+    fh.bfSize = fh.bfOffBits + (DWORD)w * (DWORD)h * 4;
+    f = CreateFileW(out, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return 1;
+    WriteFile(f, &fh, sizeof fh, &n, NULL);
+    WriteFile(f, &ih, sizeof ih, &n, NULL);
+    WriteFile(f, g_fb, (DWORD)w * (DWORD)h * 4, &n, NULL);
+    CloseHandle(f);
+    return 0;
+}
+
 /* ---- entry ------------------------------------------------------------ */
 
 static HWND parse_hwnd(const wchar_t *s)
@@ -483,6 +549,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             rc = run_rain(inst, NULL);
         }
         if (mutex) { ReleaseMutex(mutex); CloseHandle(mutex); }
+    } else if (mode == L'r' && argc > 2) {
+        int ticks = argc > 3 ? _wtoi(argv[3]) : 300;
+        int w = argc > 4 ? _wtoi(argv[4]) : 1920, h = argc > 5 ? _wtoi(argv[5]) : 1080;
+        rc = run_render(argv[2], ticks > 0 ? ticks : 300, w > 0 ? w : 1920, h > 0 ? h : 1080);
     } else if (mode == L'p' && target && IsWindow(target)) {
         rc = run_rain(inst, target);
     } else {
