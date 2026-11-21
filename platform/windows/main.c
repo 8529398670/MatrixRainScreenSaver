@@ -87,6 +87,32 @@ static void find_exe_dir(void)
     WideCharToMultiByte(CP_UTF8, 0, w, -1, g_exe_dir, (int)sizeof g_exe_dir, NULL, NULL);
 }
 
+/* Vendored fonts (rain_font_dirs), private to this process - nothing is
+ * installed. */
+static void register_vendored_fonts(void)
+{
+    char dirs[RAIN_MAX_FONT_DIRS][1024];
+    int i, n = rain_font_dirs(g_exe_dir, dirs);
+    for (i = 0; i < n; i++) {
+        wchar_t wdir[MAX_PATH], pat[MAX_PATH + 4], file[MAX_PATH * 2];
+        WIN32_FIND_DATAW fd;
+        HANDLE h;
+        if (!MultiByteToWideChar(CP_UTF8, 0, dirs[i], -1, wdir, MAX_PATH)) continue;
+        _snwprintf(pat, MAX_PATH + 4, L"%ls\\*", wdir);
+        pat[MAX_PATH + 3] = 0;
+        h = FindFirstFileW(pat, &fd);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        do {
+            const wchar_t *ext = wcsrchr(fd.cFileName, L'.');
+            if (!ext || (_wcsicmp(ext, L".ttf") && _wcsicmp(ext, L".ttc") && _wcsicmp(ext, L".otf"))) continue;
+            _snwprintf(file, MAX_PATH * 2, L"%ls\\%ls", wdir, fd.cFileName);
+            file[MAX_PATH * 2 - 1] = 0;
+            if (AddFontResourceExW(file, FR_PRIVATE, 0) > 0) rain_log("font: registered %ls", file);
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+}
+
 static HFONT make_font(const wchar_t *face, int cell)
 {
     /* Bold: MS Gothic regular is 1px strokes at these sizes, thinner than the
@@ -530,6 +556,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     set_dpi_awareness();
     find_exe_dir();
     rain_load_config(&g_cfg, g_exe_dir, g_config_path, sizeof g_config_path);
+    register_vendored_fonts();
 
     if (argv && argc > 1) {
         const wchar_t *a = argv[1];

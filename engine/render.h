@@ -46,7 +46,8 @@ void renderer_destroy(rain_renderer *rr);
  * of cells repainted. */
 int renderer_draw(rain_renderer *rr, const rain_t *r, uint32_t *px, int w, int h, int stride_px, int full);
 
-/* The shade colours: [0] head, [1..7] rain -> tail, [8] half highlight. */
-void rain_shade_colors(const rain_config *cfg, uint32_t out[RAIN_SHADES]);
+/* The shade colours of colour set `palette` (config_palette):
+ * [0] head, [1..7] rain -> tail, [8] half highlight. */
+void rain_shade_colors(const rain_config *cfg, int palette, uint32_t out[RAIN_SHADES]);
 
 #endif

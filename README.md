@@ -7,19 +7,29 @@ its exact 53 glyphs.
 ## Files
 - `engine/` — the rain itself, portable C (see **Architecture**)
 - `platform/windows/`, `platform/macos/`, `platform/linux/` — one thin shell per OS
-- `tests/engine_test.c` — engine + config tests (`build.ps1 -Test`, `make test`)
-- `Makefile` — Linux / macOS / MinGW-cross builds; `scripts/build-deb.sh`
+- `tests/engine_test.c` — engine + config tests (`make test`, or any `build` script with `-Test` / `--test`)
+- `Makefile` — Linux / macOS / MinGW-cross builds (the mac and Linux scripts call it)
 - `.github/workflows/build.yml` — CI builds all three; tags `v*` get a release
 - `config.yaml` — every setting, with comments
-- `build.ps1` — Windows build: `powershell -ExecutionPolicy Bypass -File build.ps1` (`-Test` also runs the tests)
-- `install.ps1` — rebuilds, then installs it as the Windows screensaver
-  (System32 + registry, 10 min, no lock on resume) and points
-  `MATRIXRAIN_CONFIG` at this folder's `config.yaml`. Needs admin.
-- `run.bat` — start the rain right away (local build, else the installed copy)
+- `scripts/<os>/` — the same three scripts for each OS, run from anywhere:
+
+  | | build | install (rebuilds first) | run now |
+  |---|---|---|---|
+  | `scripts/windows/` | `build.ps1` (`-Test`) | `install.ps1` (admin) | `run.bat` |
+  | `scripts/macos/` | `build.sh` (`--test`) | `install.sh` | `run.sh` |
+  | `scripts/linux/` | `build.sh` (`--test`) | `install.sh` (sudo) | `run.sh` |
+
+  Windows: `powershell -ExecutionPolicy Bypass -File scripts\windows\build.ps1`.
+  `install.ps1` puts it in System32 + the registry (10 min, no lock on
+  resume) and points `MATRIXRAIN_CONFIG` at the repo's `config.yaml`.
+  `scripts/linux/build-deb.sh` packages the Linux build as a `.deb`.
 - `gitPushUpdate.bat` — commit everything, tag it `v1.0.N` (N = last
   commit message + 1), and push `main` to `origin`. Pass a message to
   use it instead: `gitPushUpdate.bat "msg"`.
 - `fonts/matrix code nfi.ttf` — a fan font that was tried and not used (see Fonts)
+- `fonts/vendor/` — git-ignored: fonts you're licensed to use but that
+  can't be published, like MS Gothic (see Fonts). Filled by
+  `scripts/fetch-fonts.sh` / `scripts\windows\fetch-fonts.ps1`.
 
 ## Architecture
 A portable C engine with a thin native shell per OS. The animation is
@@ -52,12 +62,42 @@ Screen Saver Settings, multiple monitors, and macOS on real hardware.
 Edit `config.yaml`, save, and the next run picks it up; no restart or
 reinstall. A bad line is ignored and the rest still applies.
 
+There is one config file: `config.yaml` in the repo folder. Each OS's
+install script points the installed screensaver at it, and the run
+scripts use it too. Windows sets `MATRIXRAIN_CONFIG`; macOS and Linux link
+the per-user config (see Install) to it. Lookup order: `MATRIXRAIN_CONFIG`
+(or `--config FILE` on Linux), then `config.yaml` next to the program,
+then the per-user file.
+
 Keys: `speed_ms`, `font_name`, `font_size`, `cell_width_percent`,
 `density_percent`, `trail_min`, `trail_max`, `trail_fade`,
 `fall_speed_min`, `fall_speed_max`, `flip_percent`, `mutate_every_ticks`,
-`changing_percent`, `glow_percent`, `cursor_percent`, `head_color`,
-`rain_color`, `tail_color`, `background_color`, `exit_mouse_pixels`,
+`changing_percent`, `glow_percent`, `cursor_percent`, `theme`, `themes`,
+`exit_mouse_pixels`,
 `wake_mouse_ms`, `wake_keys`, `debug_log`, and optional `glyphs` (override the glyph set).
+
+**Themes:** the colours come from a named theme. Change the one
+`theme:` line at the top of `config.yaml` to swap them all: `default`
+(the film's green), `wsu-green` (Wright State Green #046A38 rain, Gold
+#CBA052 heads on Black #101820) or `wsu-gold` (Gold #CBA052 rain, Yellow
+#F8E08E heads), or `wsu`, which mixes the two: each falling string is
+randomly green or gold. The themes are spelled out in the `themes:` block at the
+end of the file; copy one, rename it, change its `head`, `rain`, `tail`
+and `background` colours, and point `theme:` at it. A theme can also
+mix up to four others: in place of its colours, list each one with its
+share of the falling strings,
+
+```yaml
+  wsu:
+    wsu-green: 0.75
+    wsu-gold: 0.25
+```
+
+(three green strings to every gold one; the background comes from the
+first). Leave a share empty and it gets what the others leave:
+`wsu-green: 0.95` with a bare `wsu-gold:` gives gold the other 0.05. A file with no
+`theme:` line still uses the old top-level `*_color` keys. On macOS the
+theme is also in Options.
 
 **Lookup order (all OSes):** the `MATRIXRAIN_CONFIG` env var →
 `config.yaml` next to the binary → the per-user file
@@ -77,10 +117,10 @@ or `~/.local/state/matrixrain`.
 ## Install
 
 ### Windows
-Needs a C compiler. `build.ps1` uses the first it finds: Visual Studio
+Needs a C compiler. `scripts\windows\build.ps1` uses the first it finds: Visual Studio
 Build Tools (MSVC), MinGW-w64 `gcc` on PATH, or the MinGW cross compiler
 inside WSL (`sudo apt install gcc-mingw-w64-x86-64 make`). Then run
-`install.ps1` from an admin PowerShell, and sign out and back in once.
+`scripts\windows\install.ps1` from an admin PowerShell, and sign out and back in once.
 Ready-built `.scr` files are attached to each GitHub release.
 
 - `MatrixRain.scr /s` runs it, `/c` opens settings (speed, glyph size,
@@ -98,25 +138,37 @@ Ready-built `.scr` files are attached to each GitHub release.
   finds nothing; use `tasklist /FI "IMAGENAME eq MatrixRain.scr"`.
 
 ### macOS
-On a Mac with the Xcode command line tools: `make macos` →
+On a Mac with the Xcode command line tools: `sh scripts/macos/install.sh`
+builds it and copies it to `~/Library/Screen Savers` (`make macos` alone →
 `build/MatrixRain.saver` (universal arm64 + x86_64, ad-hoc signed), or
-download `MatrixRain.saver.zip` from a release. Double-click the
-`.saver` to install. It isn't notarized, so the first time macOS blocks
+download `MatrixRain.saver.zip` from a release and double-click the
+`.saver`). It isn't notarized, so the first time macOS blocks
 it: System Settings → Privacy & Security → "Open Anyway". Settings:
-Screen Saver → Matrix Rain → Options (same three sliders, plus "Open
-config.yaml"). On Sonoma and later the screensaver runs sandboxed, so
-its config lives in
-`~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Application Support/MatrixRain/config.yaml`.
+Screen Saver → Matrix Rain → Options (same three sliders, a Theme menu,
+plus "Open config.yaml"). On Sonoma and later the screensaver runs sandboxed, so
+it reads
+`~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Application Support/MatrixRain/config.yaml`;
+`install.sh` makes that a link to the repo's `config.yaml`, so the repo
+file is the one to edit (a real file already there is kept as
+`config.yaml.bak`).
 When you wake the Mac the saver stops and its `legacyScreenSaver` host
 process quits (Sonoma and later otherwise leave it animating invisibly
 in the background, which eats CPU and slows unlocking).
+macOS draws its own date and time over the screensaver on the main
+display. To turn that off:
+`defaults -currentHost write com.apple.screensaver showClock -bool false`
+(`true` brings it back).
 
 ### Debian / Ubuntu
 ```
 sudo apt install build-essential pkg-config libx11-dev libxft-dev fonts-noto-cjk
-make linux && sudo make install-linux      # or: make deb && sudo apt install ./build/matrixrain_*.deb
+sh scripts/linux/install.sh                # = make linux && sudo make install-linux; or: make deb && sudo apt install ./build/matrixrain_*.deb
 matrixrain --window                        # try it
 ```
+- `install.sh` links `~/.config/matrixrain/config.yaml` to the repo's
+  `config.yaml` (a real file already there is kept as `config.yaml.bak`),
+  and `scripts/linux/run.sh` passes the repo file with `--config`, so
+  everything reads the one file.
 - **xscreensaver** (X11 sessions): add `matrixrain -root` to the
   `programs:` list in `~/.xscreensaver`, or pick it in `xscreensaver-settings`.
 - **GNOME (Ubuntu's default, Wayland)** has no plug-in screensaver slot
@@ -125,6 +177,79 @@ matrixrain --window                        # try it
   `systemctl --user enable --now matrixrain-idle.service`. It is not a
   lock screen; GNOME's own blank/lock timers still apply, so set "Screen
   Blank" longer than 10 minutes.
+
+## The monitors turn off (or the computer sleeps) during the rain
+
+That isn't the screensaver. Every OS has separate power timers that turn
+the display off and put the whole computer to sleep, and they win over
+any screensaver: when the display-off timer fires, the monitors go dark
+even though the rain is still running. With the usual defaults (rain
+after a few minutes, display off after 10) you see the rain for a few
+minutes and then black.
+
+Rule of thumb: set **display off** (and **sleep**) to longer than the
+screensaver delay plus however long you want to watch the rain, or to
+**Never**. The settings below cover the computer while it's plugged in; laptops
+have a separate on-battery value, which is best left short.
+
+### macOS
+- System Settings → **Lock Screen** → "Turn display off on power adapter
+  when inactive" → Never (or a long time). On the same page, "Start
+  Screen Saver when inactive" is the rain's delay.
+- System Settings → **Energy** (desktops) or **Battery → Options**
+  (laptops) → "Prevent automatic sleeping when the display is off", if
+  you leave the display on Never but still don't want the Mac sleeping.
+- Terminal (`-c` = on the power adapter; `0` = never):
+
+  ```bash
+  pmset -g                          # current values: displaysleep, sleep
+  sudo pmset -c displaysleep 0      # never turn the display off
+  sudo pmset -c sleep 0             # never sleep the Mac
+  ```
+
+  Check what happened after the fact with
+  `pmset -g log | grep -E "Display is turned off|Entering Sleep"`.
+  If `sleep` shows "prevented by caffeinate" or similar, something
+  (an app, a build) is holding it awake right now; the real value
+  applies again once that ends.
+
+### Windows
+- Settings → System → **Power & battery** (Windows 11) or **Power &
+  sleep** (Windows 10) → "When plugged in, turn off my screen after" and
+  "...put my device to sleep after" → Never (or longer than the rain).
+- `scripts\windows\install.ps1` sets the screensaver to start after 10
+  minutes, and Windows often turns the screen off at 10 minutes too, so
+  the rain may never show. Command prompt (`0` = never, values are minutes):
+
+  ```bat
+  powercfg /change monitor-timeout-ac 0
+  powercfg /change standby-timeout-ac 0
+  ```
+
+  (`-dc` instead of `-ac` for on battery.) `powercfg /requests` shows
+  what is keeping the computer awake, if anything.
+
+### Linux
+- **GNOME**: Settings → **Power** → "Screen Blank" → Never (or longer
+  than `matrixrain-idle`'s 10 minutes), and "Automatic Suspend" → off
+  when plugged in. Or:
+
+  ```bash
+  gsettings set org.gnome.desktop.session idle-delay 0
+  gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
+  ```
+
+  `idle-delay` is seconds (`0` = never). Screen Blank is also what
+  starts GNOME's lock, so turning it off means GNOME stops locking on
+  its own; lock with Super+L.
+- **KDE Plasma**: System Settings → **Power Management** → "Screen
+  Energy Saving" / "Turn off screen" and "Suspend session" for "On AC
+  Power".
+- **xscreensaver**: `xscreensaver-settings` → Advanced → **Display Power
+  Management** → untick "Power Management Enabled", or set "Off After"
+  well past "Blank After". (In `~/.xscreensaver`: `dpmsEnabled: False`.)
+- **Plain X11**: `xset q` shows the DPMS timers; `xset -dpms` turns them
+  off for this session.
 
 ## The film's pattern
 Most Matrix screensavers slide glyphs down the screen like a waterfall.
@@ -217,8 +342,20 @@ symbols).
 ## Fonts
 - **MS Gothic (Windows default)** — ships with Windows, a real Japanese
   font with full katakana/kanji coverage, including all 53 of the
-  film's glyphs. macOS uses Hiragino Sans and Linux Noto Sans CJK JP;
-  any glyph a font lacks falls back to another font that has it.
+  film's glyphs. Where `font_name:` isn't installed, macOS draws digits
+  and symbols in its system font and katakana in Hiragino Sans, and
+  Linux uses Noto Sans CJK JP; any glyph a font lacks falls back to
+  another font that has it.
+- **Vendoring MS Gothic on macOS / Linux** — it's Microsoft's, licensed
+  with Windows and Office, so it can't go in this repo. To use your own
+  copy anyway, run `sh scripts/fetch-fonts.sh`. It finds `msgothic.ttc`
+  in Office for Mac, your font folders, or `C:\Windows\Fonts` under WSL,
+  or you pass it a file. The font goes in `fonts/vendor/`, which git
+  ignores. Then reinstall (`scripts/<os>/install.sh`). The saver loads
+  everything in `fonts/vendor/` for itself only, from beside the
+  config it reads (and from a `fonts/` copy beside the per-user config,
+  which is how the sandboxed macOS saver gets it). Builds and packages
+  never include these fonts.
 - **Matrix Code NFI (tried, rejected)** — fan-made font from dafont
   (Norfok Incredible Font Design, free for personal use). Only 98
   characters, all Latin A–Z / a–z / 0–9 / punctuation drawn to *look*

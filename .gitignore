@@ -8,3 +8,7 @@
 
 # macOS Finder metadata
 .DS_Store
+
+# vendored fonts: licensed to you, not ours to publish (scripts/fetch-fonts.sh)
+/fonts/vendor/*
+!/fonts/vendor/README.md

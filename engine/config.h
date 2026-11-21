@@ -14,6 +14,32 @@
 #define RAIN_MAX_GLYPHS 512
 #define RAIN_FONT_NAME_MAX 128
 
+#define RAIN_MAX_THEMES 16
+#define RAIN_THEME_NAME_MAX 32
+#define RAIN_MAX_MIX 4          /* themes one `mix:` theme can combine */
+
+/* A named colour set from the `themes:` block of config.yaml (or a
+ * built-in one). `theme: <name>` picks one and sets all four colours.
+ * A mix theme instead lists other themes, each with its share:
+ *     wsu:
+ *       wsu-green: 0.75
+ *       wsu-gold: 0.25
+ * Each falling string then takes one of their colour sets, that often,
+ * and the background is the first one's. */
+typedef struct rain_theme {
+    char name[RAIN_THEME_NAME_MAX];  /* lower-case, e.g. "default", "wsu-green" */
+    uint32_t head, rain, tail, background; /* 0xRRGGBB */
+    char mix[RAIN_MAX_MIX][RAIN_THEME_NAME_MAX]; /* mixed theme names */
+    int mix_count;                   /* 0 = a plain theme */
+    double mix_weight[RAIN_MAX_MIX]; /* each mixed theme's share */
+    int mix_weighted;                /* bit k set = mix_weight[k] was given */
+} rain_theme;
+
+/* One string colour set: head, rain and tail. */
+typedef struct rain_palette {
+    uint32_t head, rain, tail;
+} rain_palette;
+
 typedef struct rain_config {
     int speed_ms;           /* tick interval, 20-150 */
     char font_name[RAIN_FONT_NAME_MAX]; /* UTF-8 font family */
@@ -28,7 +54,17 @@ typedef struct rain_config {
     int cursor_percent;     /* chance a string has a bright head */
     int trail_fade;         /* 1 = trails dim with age and time out (sequels' look) */
     int glow_percent;       /* bloom strength, 0 = none */
+    char theme[RAIN_THEME_NAME_MAX]; /* selected theme name; "" = none (old configs) */
+    rain_theme themes[RAIN_MAX_THEMES]; /* built-ins, then any from config.yaml */
+    int theme_count;
+    /* The colours in use: the selected theme's, or (with no theme picked)
+     * the old top-level head/rain/tail/background_color keys. */
     uint32_t head_color, rain_color, tail_color, background_color; /* 0xRRGGBB */
+    /* Extra string colour sets from a mix theme. Palette 0 is always
+     * head/rain/tail_color above; palette_count 0 or 1 = no mix. */
+    rain_palette palettes[RAIN_MAX_MIX];
+    int palette_weights[RAIN_MAX_MIX]; /* relative odds of each palette, >= 1 */
+    int palette_count;
     int exit_mouse_pixels;  /* moves smaller than this are ignored as jitter */
     int wake_mouse_ms;      /* mouse must keep moving this long to wake, 0 = at once */
     int wake_keys;          /* key presses / clicks needed to wake, 1 = the first */
@@ -42,6 +78,19 @@ typedef struct config_kv {
     const char *key;
     const char *value;
 } config_kv;
+
+/* Index of the theme called name (case-insensitive) in cfg->themes, or -1. */
+int config_find_theme(const rain_config *cfg, const char *name);
+
+/* Select theme `name` and set the four colours from it. Returns 0, or -1
+ * (nothing changed) if there is no such theme. */
+int config_apply_theme(rain_config *cfg, const char *name);
+
+/* String colour set i (0 <= i < max(palette_count, 1)). */
+rain_palette config_palette(const rain_config *cfg, int i);
+
+/* Palette for a new string from a random number, by palette_weights. */
+int config_pick_palette(const rain_config *cfg, uint32_t roll);
 
 /* Fill with built-in defaults (same values the yaml is seeded with). */
 void config_defaults(rain_config *cfg);

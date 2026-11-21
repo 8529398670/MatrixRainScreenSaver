@@ -152,7 +152,7 @@ static void test_render(void)
     rain_tick(r);
     CHECK(renderer_draw(rr, r, px, 32, 20, 32, 0) <= 8 * 6);
     CHECK(renderer_draw(rr, r, px, 32, 20, 32, 0) == 0); /* nothing changed */
-    rain_shade_colors(&c, shades);
+    rain_shade_colors(&c, 0, shades);
     CHECK(shades[0] == 0xE8FFE8 && shades[1] == 0x00FF41 && shades[7] == 0x00280A);
     CHECK(shades[8] == 0x74FF94); /* half way head -> rain */
     renderer_destroy(rr);
@@ -307,13 +307,169 @@ static void test_repo_config(void)
     CHECK(c.glyphs[30] == 0x65E5); /* 日 */
     CHECK(c.speed_ms == 42);
     CHECK(c.flip_percent == 100 && !c.trail_fade);
+    CHECK(!strcmp(c.theme, "default") && c.rain_color == 0x00FF41 && c.theme_count == 4);
+}
+
+static void test_themes(void)
+{
+    rain_config c = base_cfg(), d;
+    char *text;
+    int i;
+    /* no theme line: the old top-level colour keys, as written */
+    config_parse(&c, "rain_color: \"#123456\"\n");
+    CHECK(!c.theme[0] && c.rain_color == 0x123456);
+    /* a built-in theme wins over colour keys, wherever they are */
+    c = base_cfg();
+    config_parse(&c, "theme: WSU-Green\nrain_color: \"#123456\"\n");
+    CHECK(!strcmp(c.theme, "wsu-green"));
+    CHECK(c.rain_color == 0x046A38 && c.head_color == 0xCBA052);
+    CHECK(c.tail_color == 0x00482B && c.background_color == 0x101820);
+    c = base_cfg();
+    config_parse(&c, "theme: wsu-gold\n");
+    CHECK(c.rain_color == 0xCBA052 && c.head_color == 0xF8E08E && c.background_color == 0x101820);
+    c = base_cfg();
+    config_parse(&c, "rain_color: \"#123456\"\ntheme: default\n");
+    CHECK(c.rain_color == 0x00FF41 && c.head_color == 0xE8FFE8 && c.background_color == 0);
+    /* unknown theme name: ignored */
+    c = base_cfg();
+    config_parse(&c, "theme: nope\nrain_color: \"#123456\"\n");
+    CHECK(!c.theme[0] && c.rain_color == 0x123456);
+    /* a theme defined in the file, picked before or after its block; an
+     * unset colour starts from the film's; a top-level key ends the block */
+    c = base_cfg();
+    config_parse(&c, "theme: wsu-1\nthemes:\n  # mine\n  wsu-1:\n    rain: \"#112233\"\n"
+                     "    background: \"#010203\"\n  other:\n    rain: \"#445566\"\nspeed_ms: 30\n"
+                     "rain: \"#FFFFFF\"\n");
+    CHECK(!strcmp(c.theme, "wsu-1") && c.rain_color == 0x112233 && c.background_color == 0x010203);
+    CHECK(c.head_color == 0xE8FFE8 && c.speed_ms == 30);
+    CHECK(config_find_theme(&c, "other") >= 0 && c.themes[config_find_theme(&c, "other")].rain == 0x445566);
+    /* redefining a built-in replaces its colours */
+    c = base_cfg();
+    config_parse(&c, "themes:\n  default:\n    rain: \"#ABCDEF\"\ntheme: default\n");
+    CHECK(c.rain_color == 0xABCDEF && c.theme_count == 4);
+    /* indented lines outside themes: are not top-level keys */
+    c = base_cfg();
+    config_parse(&c, "  speed_ms: 30\n");
+    CHECK(c.speed_ms == 42);
+    /* the default text round-trips every theme and the selection */
+    c = base_cfg();
+    config_parse(&c, "themes:\n  mine:\n    head: \"#010101\"\n    rain: \"#020202\"\ntheme: mine\n");
+    text = config_default_text(&c);
+    d = base_cfg();
+    config_parse(&d, text);
+    free(text);
+    CHECK(!strcmp(d.theme, "mine") && d.theme_count == c.theme_count && d.rain_color == 0x020202);
+    for (i = 0; i < c.theme_count; i++)
+        CHECK(!strcmp(d.themes[i].name, c.themes[i].name) && d.themes[i].head == c.themes[i].head &&
+              d.themes[i].tail == c.themes[i].tail && d.themes[i].background == c.themes[i].background &&
+              d.themes[i].mix_count == c.themes[i].mix_count);
+}
+
+/* A mix theme: each string takes one of the mixed themes' colours. */
+static void test_mix_theme(void)
+{
+    rain_config c = base_cfg();
+    rain_palette p0, p1;
+    rain_t *r;
+    int x, y, seen[2] = { 0, 0 }, bad = 0, t;
+    config_parse(&c, "theme: wsu\n");
+    CHECK(!strcmp(c.theme, "wsu") && c.palette_count == 2);
+    p0 = config_palette(&c, 0);
+    p1 = config_palette(&c, 1);
+    CHECK(p0.rain == 0x046A38 && p0.head == 0xCBA052 && c.rain_color == 0x046A38);
+    CHECK(p1.rain == 0xCBA052 && p1.head == 0xF8E08E && c.background_color == 0x101820);
+    /* both colour sets show up, and nothing else */
+    r = rain_create(40, 30, &c, 9);
+    for (t = 0; t < 60; t++) rain_tick(r);
+    for (x = 0; x < 40; x++)
+        for (y = 0; y < 30; y++) {
+            rain_cell_view v = rain_cell(r, x, y);
+            if (!v.visible) continue;
+            if (v.palette > 1) bad++;
+            else seen[v.palette]++;
+        }
+    CHECK(seen[0] > 0 && seen[1] > 0 && !bad);
+    rain_destroy(r);
+    /* a user mix, quoted list, with a missing name skipped */
+    c = base_cfg();
+    config_parse(&c, "themes:\n  mine:\n    mix: [default, nope, \"wsu-gold\"]\ntheme: mine\n");
+    CHECK(c.palette_count == 2 && c.rain_color == 0x00FF41 && config_palette(&c, 1).rain == 0xCBA052);
+    CHECK(c.background_color == 0);
+    /* switching back to a plain theme drops the mix */
+    config_parse(&c, "theme: wsu-gold\n");
+    CHECK(c.palette_count == 1 && config_palette(&c, 1).rain == 0xCBA052);
+}
+
+/* Mix weights: `wsu-green: 0.75` in a theme sets how often it comes up. */
+static void test_mix_weights(void)
+{
+    rain_config c = base_cfg(), d, e;
+    rain_t *r;
+    int t, x, y, seen[2] = { 0, 0 };
+    char *text;
+    uint32_t roll;
+    /* the built-in wsu: equal, 1/1 */
+    config_parse(&c, "theme: wsu\n");
+    CHECK(c.palette_count == 2 && c.palette_weights[0] == 1 && c.palette_weights[1] == 1);
+    /* 0.75/0.25 reduces to 3/1; tabs work as indents too */
+    config_parse(&c, "themes:\n  mine:\n\twsu-green: 0.75\n\twsu-gold: 0.25\ntheme: mine\n");
+    CHECK(c.palette_count == 2 && c.palette_weights[0] == 3 && c.palette_weights[1] == 1);
+    CHECK(c.rain_color == 0x046A38 && config_palette(&c, 1).rain == 0xCBA052);
+    /* the pick follows the odds: 3 of every 4 rolls are palette 0 */
+    for (roll = 0, t = 0; roll < 400; roll++) t += config_pick_palette(&c, roll) == 0;
+    CHECK(t == 300);
+    /* and so does the rain, roughly */
+    r = rain_create(80, 40, &c, 5);
+    for (t = 0; t < 80; t++) rain_tick(r);
+    for (x = 0; x < 80; x++)
+        for (y = 0; y < 40; y++) {
+            rain_cell_view v = rain_cell(r, x, y);
+            if (v.visible && v.palette < 2) seen[v.palette]++;
+        }
+    CHECK(seen[1] > 0 && seen[0] > 2 * seen[1]);
+    rain_destroy(r);
+    /* redefining the built-in wsu replaces its list, not adds to it */
+    c = base_cfg();
+    config_parse(&c, "themes:\n  wsu:\n    default: 1\n    wsu-gold: 3\ntheme: wsu\n");
+    CHECK(c.palette_count == 2 && c.rain_color == 0x00FF41 && c.palette_weights[0] == 1 && c.palette_weights[1] == 3);
+    /* a 0 never comes up; a missing theme is skipped; a non-number is ignored */
+    config_parse(&c, "themes:\n  m4:\n    default: 0.6\n    nope: 0.2\n    wsu-gold: 0.4\n    wsu-green: 0\n    foo: bar\ntheme: m4\n");
+    CHECK(c.palette_count == 3 && c.palette_weights[0] == 3 && c.palette_weights[1] == 2 && c.palette_weights[2] == 0);
+    for (roll = 0, t = 0; roll < 400; roll++) t += config_pick_palette(&c, roll) == 2;
+    CHECK(t == 0);
+    /* the old `mix: a, b` list still works, equal */
+    config_parse(&c, "themes:\n  old:\n    mix: default, wsu-gold\ntheme: old\n");
+    CHECK(c.palette_count == 2 && c.palette_weights[0] == 1 && c.palette_weights[1] == 1);
+    /* weights survive the default text round trip */
+    config_apply_theme(&c, "m4");
+    text = config_default_text(&c);
+    CHECK(text && strstr(text, "  m4:\n    default: 0.6\n    nope: 0.2\n    wsu-gold: 0.4\n    wsu-green: 0\n"));
+    CHECK(text && strstr(text, "  wsu:\n    default: 1\n    wsu-gold: 3\n"));
+    d = base_cfg();
+    if (text) config_parse(&d, text);
+    free(text);
+    CHECK(!strcmp(d.theme, "m4") && d.palette_count == 3 && d.palette_weights[0] == 3 && d.palette_weights[2] == 0);
+    /* a name with no share gets what the others leave: 0.95 + 0.05 = 19/1 */
+    e = base_cfg();
+    config_parse(&e, "themes:\n  wsu:\n    wsu-green: 0.95\n    wsu-gold:\n  after:\n    rain: \"#010203\"\ntheme: wsu\n");
+    CHECK(e.palette_count == 2 && e.palette_weights[0] == 19 && e.palette_weights[1] == 1);
+    CHECK(config_find_theme(&e, "after") >= 0 && config_find_theme(&e, "wsu-gold") == 2);
+    /* several without a share split the rest equally: 0.5, 0.25, 0.25 */
+    config_parse(&e, "themes:\n  m3:\n    default: 0.5\n    wsu-green:\n    wsu-gold:\ntheme: m3\n");
+    CHECK(e.palette_count == 3 && e.palette_weights[0] == 2 && e.palette_weights[1] == 1 && e.palette_weights[2] == 1);
+    text = config_default_text(&e);
+    CHECK(text && strstr(text, "  m3:\n    default: 0.5\n    wsu-green:\n    wsu-gold:\n"));
+    d = base_cfg();
+    if (text) config_parse(&d, text);
+    free(text);
+    CHECK(!strcmp(d.theme, "m3") && d.palette_weights[0] == 2 && d.palette_weights[2] == 1);
 }
 
 static void test_default_text_roundtrip(void)
 {
     rain_config a = base_cfg(), b;
     char *text;
-    a.speed_ms = 77; a.fall_min = 0.35; a.fall_max = 0.6; a.rain_color = 0x123456;
+    a.speed_ms = 77; a.fall_min = 0.35; a.fall_max = 0.6; a.themes[0].rain = 0x123456;
     a.wake_mouse_ms = 2500; a.wake_keys = 4;
     text = config_default_text(&a);
     config_defaults(&b);
@@ -344,6 +500,17 @@ static void test_update_keys(void)
     fclose(f);
     buf[n] = 0;
     CHECK(!strcmp(buf, "# top comment\r\nspeed_ms: 50\r\n# middle comment\r\nfont_size: 24\r\ndensity_percent: 70\r\n"));
+    /* `theme:` is rewritten; an indented line in themes: is left alone */
+    f = fopen(path, "wb");
+    fputs("theme: default\nthemes:\n  theme:\n    rain: \"#010101\"\n", f);
+    fclose(f);
+    kv[0].key = "theme"; kv[0].value = "wsu-gold";
+    CHECK(config_update_keys(path, &c, kv, 1) == 0);
+    f = fopen(path, "rb");
+    n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    CHECK(!strcmp(buf, "theme: wsu-gold\nthemes:\n  theme:\n    rain: \"#010101\"\n"));
     remove(path);
 }
 
@@ -360,6 +527,9 @@ int main(void)
     test_changing_strings();
     test_config_parse();
     test_repo_config();
+    test_themes();
+    test_mix_theme();
+    test_mix_weights();
     test_default_text_roundtrip();
     test_update_keys();
     printf("%d checks, %d failures\n", checks, failures);

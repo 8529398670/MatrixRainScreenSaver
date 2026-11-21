@@ -9,7 +9,7 @@
 
 typedef struct {
     uint16_t glyph, swap_from;
-    uint8_t empty, variant, is_cursor, dissolving, changing;
+    uint8_t empty, variant, is_cursor, dissolving, changing, palette;
     int32_t born_tick, life_ticks;
     int32_t cursor_left_tick; /* tick the bright head moved off this cell */
 } cell_t;
@@ -31,6 +31,7 @@ typedef struct {
     int owner_slot, owner_id; /* deletion strings: the string they follow */
     int has_cursor;
     int changing;      /* its glyphs keep changing (others stay still) */
+    int palette;       /* colour set, from a mix theme (0 otherwise) */
     int prev_head_row;
 } rain_stream;
 
@@ -107,6 +108,8 @@ static rain_stream *add_stream(rain_t *r, int col, int deletion)
         s->owner_slot = -1;
         s->has_cursor = !deletion && rnd_below(r, 100) < r->cfg.cursor_percent;
         s->changing = !deletion && rnd_below(r, 100) < r->cfg.changing_percent;
+        /* Only roll with a mix, so single themes keep the same rain per seed. */
+        s->palette = (!deletion && r->cfg.palette_count > 1) ? config_pick_palette(&r->cfg, rnd_u32(r)) : 0;
         s->prev_head_row = -1;
         return s;
     }
@@ -153,6 +156,7 @@ static void write_glyph(rain_t *r, rain_stream *s, int row, int born_tick, int c
     c->variant = (uint8_t)pick_variant(r, c->glyph);
     c->is_cursor = (uint8_t)cursor;
     c->changing = (uint8_t)s->changing;
+    c->palette = (uint8_t)s->palette;
     c->born_tick = born_tick;
     life = (int)(s->trail_rows / s->rate);
     c->life_ticks = life < 1 ? 1 : life;
@@ -413,6 +417,7 @@ rain_cell_view rain_cell(const rain_t *r, int x, int y)
     v.swap_from = c->swap_from;
     v.flipped = c->variant;
     v.dissolving = c->dissolving;
+    v.palette = c->palette;
     if (c->is_cursor) v.shade = 0;
     else if (c->cursor_left_tick == r->tick) v.shade = 8; /* half highlight */
     else if (r->cfg.trail_fade) {

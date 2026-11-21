@@ -12,11 +12,14 @@
 #endif
 #include <windows.h>
 #define SEP '\\'
+#define SEP_STR "\\"
 #else
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #define SEP '/'
+#define SEP_STR "/"
 #endif
 
 #ifdef _WIN32
@@ -159,6 +162,48 @@ const char *rain_resolve_config(char *out, size_t n, const char *exe_dir)
     if (rain_user_config_path(tmp, sizeof tmp) && rain_file_exists(tmp) && strlen(tmp) < n)
         return strcpy(out, tmp);
     return NULL;
+}
+
+static int dir_exists(const char *path)
+{
+#ifdef _WIN32
+    wchar_t *wp = to_wide(path);
+    DWORD a = wp ? GetFileAttributesW(wp) : INVALID_FILE_ATTRIBUTES;
+    free(wp);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
+/* path -> its folder, in place (no separator = ""). */
+static void strip_file(char *path)
+{
+    char *a = strrchr(path, '/'), *b = strrchr(path, '\\');
+    char *s = a > b ? a : b;
+    if (s) *s = 0; else path[0] = 0;
+}
+
+int rain_font_dirs(const char *exe_dir, char out[RAIN_MAX_FONT_DIRS][1024])
+{
+    char cfg[1024], dir[1024];
+    int n = 0;
+    if (rain_user_config_path(cfg, sizeof cfg)) {
+        strip_file(cfg);
+        if (join(dir, sizeof dir, cfg, "fonts") && dir_exists(dir)) strcpy(out[n++], dir);
+    }
+    if (rain_resolve_config(cfg, sizeof cfg, exe_dir)) {
+#ifndef _WIN32
+        char real[PATH_MAX];
+        if (realpath(cfg, real) && strlen(real) < sizeof cfg) strcpy(cfg, real);
+#endif
+        strip_file(cfg);
+        if (*cfg && join(dir, sizeof dir, cfg, "fonts" SEP_STR "vendor") &&
+            dir_exists(dir) && (n == 0 || strcmp(dir, out[0])))
+            strcpy(out[n++], dir);
+    }
+    return n;
 }
 
 static FILE *g_log;

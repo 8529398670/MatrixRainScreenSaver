@@ -71,12 +71,13 @@ static uint32_t lerp_color(uint32_t a, uint32_t b, double t)
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)bl;
 }
 
-void rain_shade_colors(const rain_config *cfg, uint32_t out[RAIN_SHADES])
+void rain_shade_colors(const rain_config *cfg, int palette, uint32_t out[RAIN_SHADES])
 {
+    rain_palette p = config_palette(cfg, palette);
     int i;
-    out[0] = cfg->head_color;
-    for (i = 1; i < 8; i++) out[i] = lerp_color(cfg->rain_color, cfg->tail_color, (i - 1) / 6.0);
-    out[8] = lerp_color(cfg->head_color, cfg->rain_color, 0.5);
+    out[0] = p.head;
+    for (i = 1; i < 8; i++) out[i] = lerp_color(p.rain, p.tail, (i - 1) / 6.0);
+    out[8] = lerp_color(p.head, p.rain, 0.5);
 }
 
 /* Glow: the frame is shrunk GLOW_DOWN times, box-blurred, and the blur is
@@ -85,7 +86,7 @@ void rain_shade_colors(const rain_config *cfg, uint32_t out[RAIN_SHADES])
 
 struct rain_renderer {
     rain_atlas *atlas;
-    uint32_t shades[RAIN_SHADES];
+    uint32_t shades[RAIN_MAX_MIX][RAIN_SHADES];
     uint32_t bg;
     uint64_t *last;   /* last drawn state per cell */
     int cols, rows;
@@ -101,9 +102,10 @@ struct rain_renderer {
 rain_renderer *renderer_create(const rain_config *cfg, rain_atlas *atlas)
 {
     rain_renderer *rr = (rain_renderer *)calloc(1, sizeof *rr);
+    int i;
     if (!rr) return NULL;
     rr->atlas = atlas;
-    rain_shade_colors(cfg, rr->shades);
+    for (i = 0; i < RAIN_MAX_MIX; i++) rain_shade_colors(cfg, i, rr->shades[i]);
     rr->bg = cfg->background_color & 0xFFFFFF;
     rr->glow = cfg->glow_percent < 0 ? 0 : cfg->glow_percent > 100 ? 100 : cfg->glow_percent;
     return rr;
@@ -130,7 +132,7 @@ static uint64_t cell_key(const rain_cell_view *v)
     if (!v->visible) return 0;
     return (1ULL << 63) | ((uint64_t)v->glyph << 32) |
            ((uint64_t)(v->dissolving ? v->swap_from : 0) << 16) |
-           ((uint64_t)v->shade << 8) | ((uint64_t)v->flipped << 1) | (uint64_t)v->dissolving;
+           ((uint64_t)v->shade << 8) | ((uint64_t)v->palette << 4) | ((uint64_t)v->flipped << 1) | (uint64_t)v->dissolving;
 }
 
 /* dst = dst + (color - dst) * coverage. With m2, coverage is the two
@@ -432,7 +434,7 @@ int renderer_draw(rain_renderer *rr, const rain_t *r, uint32_t *px, int w, int h
             if (!v.visible) continue;
             blend_mask(target, stride, x0, y0, cw, ch, atlas_mask(rr->atlas, v.glyph, v.flipped),
                        v.dissolving ? atlas_mask(rr->atlas, v.swap_from, v.flipped) : NULL,
-                       cell_w, rr->shades[v.shade < RAIN_SHADES ? v.shade : 1]);
+                       cell_w, rr->shades[v.palette < RAIN_MAX_MIX ? v.palette : 0][v.shade < RAIN_SHADES ? v.shade : 1]);
         }
     }
 

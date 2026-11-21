@@ -1,7 +1,8 @@
 # Build MatrixRain.scr from the C sources (engine\ + platform\windows\).
-# Run from this folder: right-click > Run with PowerShell, or:
-#   powershell -ExecutionPolicy Bypass -File build.ps1          # build
-#   powershell -ExecutionPolicy Bypass -File build.ps1 -Test    # build + run engine tests
+# Right-click > Run with PowerShell, or from the repo folder:
+#   powershell -ExecutionPolicy Bypass -File scripts\windows\build.ps1          # build
+#   powershell -ExecutionPolicy Bypass -File scripts\windows\build.ps1 -Test    # build + run engine tests
+# Writes MatrixRain.scr to the repo folder.
 #
 # Uses the first compiler it finds:
 #   1. Visual Studio / Build Tools (MSVC)
@@ -9,7 +10,7 @@
 #   3. MinGW-w64 cross gcc inside WSL (sudo apt install gcc-mingw-w64-x86-64 make)
 param([switch]$Test)
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $out = Join-Path $root 'MatrixRain.scr'
 $testExe = Join-Path $root 'build\engine_test.exe'
 New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null

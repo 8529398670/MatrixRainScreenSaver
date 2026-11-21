@@ -96,12 +96,32 @@ static rain_atlas *build_atlas(const rain_config *cfg, int cell_w, int cell)
     BOOL _full;
     NSWindow *_sheet;
     NSSlider *_speed, *_size, *_density;
+    NSPopUpButton *_theme;
+}
+
+// Vendored fonts (rain_font_dirs), for this process only - nothing is
+// installed. Registering one twice just fails quietly.
+static void register_vendored_fonts(const char *exe_dir)
+{
+    char dirs[RAIN_MAX_FONT_DIRS][1024];
+    int i, n = rain_font_dirs(exe_dir, dirs);
+    for (i = 0; i < n; i++) {
+        NSURL *dir = [NSURL fileURLWithPath:@(dirs[i]) isDirectory:YES];
+        for (NSURL *u in [[NSFileManager defaultManager] contentsOfDirectoryAtURL:dir includingPropertiesForKeys:nil options:0 error:NULL]) {
+            NSString *ext = u.pathExtension.lowercaseString;
+            if ([@[ @"ttf", @"ttc", @"otf", @"otc" ] containsObject:ext]) {
+                CTFontManagerRegisterFontsForURL((__bridge CFURLRef)u, kCTFontManagerScopeProcess, NULL);
+                rain_log("font: registered %s", u.fileSystemRepresentation);
+            }
+        }
+    }
 }
 
 - (void)loadConfig
 {
     NSString *res = [[NSBundle bundleForClass:[self class]] resourcePath];
     rain_load_config(&_cfg, res.fileSystemRepresentation, NULL, 0);
+    register_vendored_fonts(res.fileSystemRepresentation);
     [self setAnimationTimeInterval:_cfg.speed_ms / 1000.0];
 }
 
@@ -263,20 +283,32 @@ static NSSlider *slider(NSRect frame, double lo, double hi, double val, NSIntege
     NSView *v;
     NSButton *ok, *cancel, *open;
     NSString *path = [self configPath] ?: @"?";
-    _sheet = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 380, 260)
+    _sheet = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 380, 316)
                                          styleMask:NSWindowStyleMaskTitled
                                            backing:NSBackingStoreBuffered
                                              defer:NO];
     v = _sheet.contentView;
-    [v addSubview:label(@"Fall speed (lower = faster)", NSMakeRect(20, 226, 340, 18))];
-    _speed = slider(NSMakeRect(20, 198, 340, 24), 20, 150, _cfg.speed_ms, 14);
+    [v addSubview:label(@"Fall speed (lower = faster)", NSMakeRect(20, 282, 340, 18))];
+    _speed = slider(NSMakeRect(20, 254, 340, 24), 20, 150, _cfg.speed_ms, 14);
     [v addSubview:_speed];
-    [v addSubview:label(@"Glyph size", NSMakeRect(20, 170, 340, 18))];
-    _size = slider(NSMakeRect(20, 142, 340, 24), 12, 32, _cfg.font_size, 11);
+    [v addSubview:label(@"Glyph size", NSMakeRect(20, 226, 340, 18))];
+    _size = slider(NSMakeRect(20, 198, 340, 24), 12, 32, _cfg.font_size, 11);
     [v addSubview:_size];
-    [v addSubview:label(@"How many columns", NSMakeRect(20, 114, 340, 18))];
-    _density = slider(NSMakeRect(20, 86, 340, 24), 30, 100, _cfg.density, 8);
+    [v addSubview:label(@"How many columns", NSMakeRect(20, 170, 340, 18))];
+    _density = slider(NSMakeRect(20, 142, 340, 24), 30, 100, _cfg.density, 8);
     [v addSubview:_density];
+    [v addSubview:label(@"Theme", NSMakeRect(20, 114, 340, 18))];
+    _theme = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(17, 84, 346, 26) pullsDown:NO];
+    // Every theme from config.yaml's themes: block (plus the built-ins).
+    // With no theme: line the colours come from old *_color keys: show
+    // that as its own item, which leaves the file alone when saved.
+    if (!_cfg.theme[0]) [_theme addItemWithTitle:@"Colours from config.yaml"];
+    for (int t = 0; t < _cfg.theme_count; t++) {
+        [_theme addItemWithTitle:@(_cfg.themes[t].name)];
+        _theme.lastItem.representedObject = @(_cfg.themes[t].name);
+    }
+    if (_cfg.theme[0]) [_theme selectItemWithTitle:@(_cfg.theme)];
+    [v addSubview:_theme];
     NSTextField *where = label([NSString stringWithFormat:@"Saved to %@", path], NSMakeRect(20, 56, 340, 18));
     where.lineBreakMode = NSLineBreakByTruncatingMiddle;
     where.font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
@@ -314,11 +346,13 @@ static NSSlider *slider(NSRect frame, double lo, double hi, double val, NSIntege
     NSString *path = [self configPath];
     if (path) {
         char speed[16], size[16], density[16];
-        config_kv kv[3] = { { "speed_ms", speed }, { "font_size", size }, { "density_percent", density } };
+        NSString *theme = _theme.selectedItem.representedObject;
+        config_kv kv[4] = { { "speed_ms", speed }, { "font_size", size }, { "density_percent", density },
+                            { "theme", theme.UTF8String } };
         snprintf(speed, sizeof speed, "%d", (int)lround(_speed.doubleValue));
         snprintf(size, sizeof size, "%d", (int)lround(_size.doubleValue));
         snprintf(density, sizeof density, "%d", (int)lround(_density.doubleValue));
-        config_update_keys(path.fileSystemRepresentation, &_cfg, kv, 3);
+        config_update_keys(path.fileSystemRepresentation, &_cfg, kv, theme ? 4 : 3);
         [self loadConfig];
         [self freeRain];
     }

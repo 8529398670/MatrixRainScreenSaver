@@ -1,17 +1,17 @@
 # Matrix Rain screensaver — settings
 # Edit this file in Notepad, save, and the next time the rain runs it picks it up.
 # No restart or reinstall needed. A bad line is ignored, the rest still applies.
-#
+
+# ---- colours ---------------------------------------------------------
+# theme: change just this one word to swap every colour. Built in:
+# default (the film's green), wsu-green, wsu-gold, wsu (both mixed). The themes are listed,
+# and you can add your own, in the `themes:` block at the end of the file.
+theme: wsu
+
+# ---- motion ----------------------------------------------------------
 # speed_ms: how often the rain moves, in milliseconds (lower = faster).
 # 42 = one tick per film frame (24 fps). 20-150.
 speed_ms: 42
-# font_name: try "MS Gothic" (has the katakana), "Consolas", "Yu Gothic"...
-font_name: "MS Gothic"
-# font_size: glyph height in pixels. 12-32.
-font_size: 20
-# cell_width_percent: column width as a % of font_size. The film's glyphs
-# are taller than wide; 100 = square cells. 40-100.
-cell_width_percent: 75
 # density_percent: how many columns are filled. 30-100.
 density_percent: 90
 # trail_min / trail_max: how long each falling column is, in glyphs.
@@ -19,17 +19,13 @@ trail_min: 5
 trail_max: 25
 # trail_fade: false = trails stay one brightness until the invisible
 # deletion string behind them erases them (the 1999 film); true = they
-# dim from rain_color to tail_color and time out (the sequels' look).
+# dim from the theme's rain to tail colour and time out (the sequels' look).
 trail_fade: false
 # fall_speed_min / fall_speed_max: rows each string grows per tick.
 # Newton's frame counts suggest about one row per film frame; at
 # speed_ms 42 that is 1.0. Not verified against the footage.
 fall_speed_min: 0.5
 fall_speed_max: 1.0
-# flip_percent: chance each katakana is mirrored. The film mirrors all
-# of them (100). Digits always follow the film: 2 5 9 mirrored, 3 6
-# upside down, the rest as drawn. 0-100.
-flip_percent: 100
 # mutate_every_ticks: every N ticks ALL changing glyphs swap at once
 # (the film's synchronized shimmer), with a one-frame cross-dissolve.
 # 4 = hold 3 frames + 1 overlap frame, as in the film.
@@ -37,18 +33,36 @@ mutate_every_ticks: 4
 # changing_percent: chance a string's glyphs keep changing; the others
 # stay still. The film's share is not measured. 0-100.
 changing_percent: 40
+
+# ---- glyphs and look -------------------------------------------------
+# font_name: a font family name - "Hiragino Sans" (Mac), "MS Gothic"
+# (Windows), "Yu Gothic"... Glyphs are always drawn bold, so don't add
+# "bold" to the name (that's no family, and the Mac falls back to Helvetica).
+# A font this computer lacks falls back: MS Gothic on Windows, Helvetica
+# digits + Hiragino katakana on the Mac.
+font_name: "Hiragino Sans"
+# font_size: glyph height in pixels. 12-32.
+font_size: 20
+# cell_width_percent: column width as a % of font_size. The film's glyphs
+# are taller than wide; 100 = square cells. 40-100.
+cell_width_percent: 75
+# glyphs: the film's exact 53, from Carl Newton's frame-by-frame analysis
+# of the opening of The Matrix (1999): 30 mirrored half-width katakana,
+# the kanji 日, digits 0-9, Z, and 11 symbols. Comment this line out to
+# go back to the built-in set (all 56 half-width katakana + extras).
+glyphs: 'ﾊﾋｼﾂｳｰﾅﾐﾓﾆｻﾜｵﾘﾎﾏｴｷﾑﾃｹﾒｶﾕﾗｾﾈｽﾀﾇ日0123456789Z*+:=.<>"｜¦_'
+# flip_percent: chance each katakana is mirrored. The film mirrors all
+# of them (100). Digits always follow the film: 2 5 9 mirrored, 3 6
+# upside down, the rest as drawn. 0-100.
+flip_percent: 100
 # glow_percent: strength of the soft glow around lit glyphs. 0 = none
 # (also the fastest). 0-100.
 glow_percent: 60
 # cursor_percent: chance a string gets a bright leading glyph (the
 # film has about 1 in 5). 0-100.
 cursor_percent: 20
-# Colours are #RRGGBB. head = the bright leading glyph, rain = the
-# main green, tail = the darkest end of the trail.
-head_color: "#E8FFE8"
-rain_color: "#00FF41"
-tail_color: "#00280A"
-background_color: "#000000"
+
+# ---- waking up -------------------------------------------------------
 # exit_mouse_pixels: mouse moves smaller than this many pixels are ignored
 # as jitter (a bumped desk). 1-100.
 exit_mouse_pixels: 5
@@ -59,11 +73,57 @@ wake_mouse_ms: 2000
 # wake_keys: how many key presses or mouse clicks wake the screen. They must
 # come within 2 seconds of each other; holding a key down counts once. 1-50.
 wake_keys: 5
+
+# ---- logging ---------------------------------------------------------
 # debug_log: true writes a log (Windows: %LOCALAPPDATA%\MatrixRain\MatrixRain.log,
 # macOS: ~/Library/Logs/MatrixRain, Linux: ~/.local/state/matrixrain).
 debug_log: false
-# glyphs: the film's exact 53, from Carl Newton's frame-by-frame analysis
-# of the opening of The Matrix (1999): 30 mirrored half-width katakana,
-# the kanji 日, digits 0-9, Z, and 11 symbols. Comment this line out to
-# go back to the built-in set (all 56 half-width katakana + extras).
-glyphs: 'ﾊﾋｼﾂｳｰﾅﾐﾓﾆｻﾜｵﾘﾎﾏｴｷﾑﾃｹﾒｶﾕﾗｾﾈｽﾀﾇ日0123456789Z*+:=.<>"｜¦_'
+
+colors:
+  wsu:
+    primary:
+      green: "#046A38"
+      gold: "#CBA052"
+    accent:
+      dark_green: "#00482B"
+      deep_gold: "#AE8643"
+      yellow: "#F8E08E"
+      leaf: "#719949"
+      beige: "#DCD59A"
+      black: "#101820"
+      faded_gold: "#E7E3C6"
+      off_white: "#F2F1F0"
+
+# ---- themes ----------------------------------------------------------
+# themes: each one sets four #RRGGBB colours -
+#   head       the bright leading glyph
+#   rain       the main colour of the trail
+#   tail       the dark end a trail fades to (with trail_fade: true)
+#   background behind the rain
+# or, instead of colours, mixes other themes, each with its share of the
+# falling strings (background from the first), e.g.
+#     wsu-green: 0.75
+#     wsu-gold: 0.25
+# Leave a share empty (`wsu-gold:`) and it gets what the others leave.
+# Add your own: copy a block, give it a new name, and set theme: (at the
+# top of the file) to that name.
+# Keep the indents (2 spaces for the name, 4 for its colours).
+themes:
+  default:
+    head: "#E8FFE8"
+    rain: "#00FF41"
+    tail: "#00280A"
+    background: "#000000"
+  wsu-green:
+    head: "#E7E3C6"
+    rain: "#046A38"
+    tail: "#00482B"
+    background: "#000000"
+  wsu-gold:
+    head: "#E7E3C6"
+    rain: "#CBA052"
+    tail: "#AE8643"
+    background: "#000000"
+  wsu:
+    wsu-green: 0.95
+    wsu-gold:

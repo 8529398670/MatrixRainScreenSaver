@@ -1,5 +1,5 @@
 # Makefile - engine tests, the Linux (X11) build, the macOS .saver, and a
-# MinGW cross build of the Windows .scr (used by build.ps1 via WSL).
+# MinGW cross build of the Windows .scr (used by scripts/windows/build.ps1 via WSL).
 #
 #   make test            engine tests (SAN=1 adds address/UB sanitizers)
 #   make linux           build/matrixrain          (needs libx11-dev libxft-dev)
@@ -50,7 +50,7 @@ install-linux: build/matrixrain
 	@echo "GNOME:       systemctl --user enable --now matrixrain-idle.service"
 
 deb: build/matrixrain
-	sh scripts/build-deb.sh
+	sh scripts/linux/build-deb.sh
 
 # ---- macOS ----------------------------------------------------------------
 SAVER = build/MatrixRain.saver

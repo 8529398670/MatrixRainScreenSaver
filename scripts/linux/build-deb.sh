@@ -1,8 +1,8 @@
 #!/bin/sh
 # build-deb.sh - package build/matrixrain as a .deb (run `make linux` first).
-#   sh scripts/build-deb.sh [VERSION]
+#   sh scripts/linux/build-deb.sh [VERSION]
 set -eu
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 VERSION=${1:-$(git describe --tags --always 2>/dev/null | sed 's/^v//' || echo 0)}
 case "$VERSION" in [0-9]*) ;; *) VERSION="0~$VERSION" ;; esac
 ARCH=$(dpkg --print-architecture)

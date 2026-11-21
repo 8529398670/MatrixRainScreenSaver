@@ -27,6 +27,7 @@ typedef struct rain_cell_view {
     uint8_t flipped;     /* atlas variant: 0 as drawn, 1 mirrored, 2 upside down */
     uint8_t dissolving;  /* draw swap_from and glyph both at 50% this frame */
     uint8_t visible;     /* 0 = draw background only */
+    uint8_t palette;     /* colour set (config_palette), 0 without a mix theme */
 } rain_cell_view;
 
 /* Grid for a w x h pixel surface with cells of cell_w x cell_h pixels. */

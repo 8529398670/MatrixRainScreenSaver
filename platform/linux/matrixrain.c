@@ -65,6 +65,16 @@ static void usage(void)
             "  --config FILE  read settings from FILE instead of the usual lookup\n");
 }
 
+/* Vendored fonts (rain_font_dirs), for this process only via fontconfig -
+ * nothing is installed. */
+static void register_vendored_fonts(const char *exe)
+{
+    char dirs[RAIN_MAX_FONT_DIRS][1024];
+    int i, n = rain_font_dirs(exe, dirs);
+    for (i = 0; i < n; i++)
+        if (FcConfigAppFontAddDir(NULL, (const FcChar8 *)dirs[i])) rain_log("font: added %s", dirs[i]);
+}
+
 static void exe_dir(char *out, size_t n)
 {
     char buf[PATH_MAX];
@@ -251,6 +261,7 @@ int main(int argc, char **argv)
 
     exe_dir(dir, sizeof dir);
     rain_load_config(&cfg, dir, NULL, 0);
+    register_vendored_fonts(dir);
 
     dpy = XOpenDisplay(NULL);
     if (!dpy) { fprintf(stderr, "matrixrain: cannot open display\n"); return 1; }
