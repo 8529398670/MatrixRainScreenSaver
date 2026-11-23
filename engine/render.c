@@ -10,6 +10,14 @@
 #else
 #define RAIN_SSE2 0
 #endif
+/* ARM (Apple Silicon, Windows on ARM, Raspberry Pi 64-bit): the same
+ * 4-pixel glow composite with NEON. Bit-identical to the plain C loop. */
+#if !defined(RAIN_NO_SIMD) && !RAIN_SSE2 && (defined(__ARM_NEON) || defined(_M_ARM64))
+#include <arm_neon.h>
+#define RAIN_NEON 1
+#else
+#define RAIN_NEON 0
+#endif
 
 rain_atlas *atlas_create(int cell_w, int cell_h, int glyph_count)
 {
@@ -358,6 +366,31 @@ static void glow_composite(rain_renderer *rr, uint32_t *px, int stride)
                 __m128i glow = _mm_packus_epi16(_mm_srli_epi16(lo, 8), _mm_srli_epi16(hi, 8));
                 __m128i base = _mm_loadu_si128((const __m128i *)(src + x));
                 _mm_storeu_si128((__m128i *)(dst + x), _mm_adds_epu8(base, glow));
+            }
+        }
+#elif RAIN_NEON
+        {
+            /* Same as the SSE2 block: per byte, (a * (256 - f) + b * f) >> 8
+             * (at most 255 * 256, fits 16 bits), then a saturating add. */
+            const uint16x8_t k256 = vdupq_n_u16(256);
+            const int last = rr->sw - 1;
+            for (; x + 4 <= rr->bw; x += 4) {
+                const int *t = rr->xtab + x;
+                int i0 = t[0] >> 8, i1 = t[1] >> 8, i2 = t[2] >> 8, i3 = t[3] >> 8;
+                uint32_t av[4] = { row[i0], row[i1], row[i2], row[i3] };
+                uint32_t bv[4] = { row[i0 < last ? i0 + 1 : i0], row[i1 < last ? i1 + 1 : i1],
+                                   row[i2 < last ? i2 + 1 : i2], row[i3 < last ? i3 + 1 : i3] };
+                uint16_t fl[8] = { (uint16_t)(t[0] & 255), (uint16_t)(t[0] & 255), (uint16_t)(t[0] & 255), (uint16_t)(t[0] & 255),
+                                   (uint16_t)(t[1] & 255), (uint16_t)(t[1] & 255), (uint16_t)(t[1] & 255), (uint16_t)(t[1] & 255) };
+                uint16_t fh[8] = { (uint16_t)(t[2] & 255), (uint16_t)(t[2] & 255), (uint16_t)(t[2] & 255), (uint16_t)(t[2] & 255),
+                                   (uint16_t)(t[3] & 255), (uint16_t)(t[3] & 255), (uint16_t)(t[3] & 255), (uint16_t)(t[3] & 255) };
+                uint8x16_t a = vreinterpretq_u8_u32(vld1q_u32(av)), b = vreinterpretq_u8_u32(vld1q_u32(bv));
+                uint16x8_t flo = vld1q_u16(fl), fhi = vld1q_u16(fh);
+                uint16x8_t lo = vmlaq_u16(vmulq_u16(vmovl_u8(vget_low_u8(a)), vsubq_u16(k256, flo)), vmovl_u8(vget_low_u8(b)), flo);
+                uint16x8_t hi = vmlaq_u16(vmulq_u16(vmovl_u8(vget_high_u8(a)), vsubq_u16(k256, fhi)), vmovl_u8(vget_high_u8(b)), fhi);
+                uint8x16_t glow = vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
+                uint8x16_t base = vreinterpretq_u8_u32(vld1q_u32(src + x));
+                vst1q_u32(dst + x, vreinterpretq_u32_u8(vqaddq_u8(base, glow)));
             }
         }
 #endif
