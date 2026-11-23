@@ -288,8 +288,8 @@ static NSSlider *slider(NSRect frame, double lo, double hi, double val, NSIntege
                                            backing:NSBackingStoreBuffered
                                              defer:NO];
     v = _sheet.contentView;
-    [v addSubview:label(@"Fall speed (lower = faster)", NSMakeRect(20, 282, 340, 18))];
-    _speed = slider(NSMakeRect(20, 254, 340, 24), 20, 150, _cfg.speed_ms, 14);
+    [v addSubview:label(@"Speed (frames per second, 24 = the film)", NSMakeRect(20, 282, 340, 18))];
+    _speed = slider(NSMakeRect(20, 254, 340, 24), 7, 50, _cfg.fps, 44);
     [v addSubview:_speed];
     [v addSubview:label(@"Glyph size", NSMakeRect(20, 226, 340, 18))];
     _size = slider(NSMakeRect(20, 198, 340, 24), 12, 32, _cfg.font_size, 11);
@@ -347,7 +347,7 @@ static NSSlider *slider(NSRect frame, double lo, double hi, double val, NSIntege
     if (path) {
         char speed[16], size[16], density[16];
         NSString *theme = _theme.selectedItem.representedObject;
-        config_kv kv[4] = { { "speed_ms", speed }, { "font_size", size }, { "density_percent", density },
+        config_kv kv[4] = { { "fps", speed }, { "font_size", size }, { "density_percent", density },
                             { "theme", theme.UTF8String } };
         snprintf(speed, sizeof speed, "%d", (int)lround(_speed.doubleValue));
         snprintf(size, sizeof size, "%d", (int)lround(_size.doubleValue));

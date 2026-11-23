@@ -9,9 +9,10 @@
 theme: wsu
 
 # ---- motion ----------------------------------------------------------
-# speed_ms: how often the rain moves, in milliseconds (lower = faster).
-# 42 = one tick per film frame (24 fps). 20-150.
-speed_ms: 42
+# fps: how fast the rain moves, in frames per second (higher = faster).
+# 24 = one tick per film frame, as in the film. 7-50.
+fps: 24
+# fps: 17   # slower: the pace it ran at before the Apple Silicon speedup
 # density_percent: how many columns are filled. 30-100.
 density_percent: 90
 # trail_min / trail_max: how long each falling column is, in glyphs.
@@ -23,7 +24,7 @@ trail_max: 25
 trail_fade: false
 # fall_speed_min / fall_speed_max: rows each string grows per tick.
 # Newton's frame counts suggest about one row per film frame; at
-# speed_ms 42 that is 1.0. Not verified against the footage.
+# fps 24 that is 1.0. Not verified against the footage.
 fall_speed_min: 0.5
 fall_speed_max: 1.0
 # mutate_every_ticks: every N ticks ALL changing glyphs swap at once

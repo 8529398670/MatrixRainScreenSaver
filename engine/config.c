@@ -42,7 +42,8 @@ static const rain_theme builtin_themes[] = {
 void config_defaults(rain_config *c)
 {
     memset(c, 0, sizeof *c);
-    c->speed_ms = 42; /* one tick = one film frame at 24 fps */
+    c->fps = 24;      /* one tick = one film frame */
+    c->speed_ms = 42; /* 1000 / 24, rounded */
     strcpy(c->font_name, RAIN_DEFAULT_FONT);
     c->font_size = 20;
     c->cell_width_percent = 75;
@@ -424,7 +425,18 @@ static void apply_theme_field(rain_theme *t, const char *key, const char *val, i
 
 static void apply(rain_config *c, const char *key, const char *val)
 {
-    if (!strcmp(key, "speed_ms")) c->speed_ms = clamp_int(val, 20, 150, c->speed_ms);
+    if (!strcmp(key, "fps")) {
+        c->fps = clamp_int(val, 7, 50, c->fps);
+        c->speed_ms = (1000 + c->fps / 2) / c->fps;
+        c->fps_given = 1;
+    }
+    else if (!strcmp(key, "speed_ms")) {
+        /* The old key (milliseconds per tick); an fps: line wins over it. */
+        if (!c->fps_given) {
+            c->speed_ms = clamp_int(val, 20, 150, c->speed_ms);
+            c->fps = (1000 + c->speed_ms / 2) / c->speed_ms;
+        }
+    }
     else if (!strcmp(key, "font_name")) {
         if (*val) { strncpy(c->font_name, val, RAIN_FONT_NAME_MAX - 1); c->font_name[RAIN_FONT_NAME_MAX - 1] = 0; }
     }
@@ -659,9 +671,9 @@ char *config_default_text(const rain_config *c)
     sprintf(tmp, "theme: %s", c->theme[0] ? c->theme : "default");
     sb_line(&b, tmp);
     sb_line(&b, "");
-    sb_line(&b, "# speed_ms: how often the rain moves, in milliseconds (lower = faster).");
-    sb_line(&b, "# 42 = one tick per film frame (24 fps). 20-150.");
-    sb_kv_int(&b, "speed_ms", c->speed_ms);
+    sb_line(&b, "# fps: how fast the rain moves, in frames per second (higher = faster).");
+    sb_line(&b, "# 24 = one tick per film frame, as in the film. 7-50.");
+    sb_kv_int(&b, "fps", c->fps);
     sb_line(&b, "# font_name: a font family with half-width katakana. Bundled with the");
     sb_line(&b, "# saver (fonts/open/): \"BIZ UDGothic\", \"Noto Sans JP\", \"IPAGothic\".");
     sb_line(&b, "# Or one the computer has: \"MS Gothic\" (Windows), \"Hiragino Sans\" (Mac).");
@@ -684,7 +696,7 @@ char *config_default_text(const rain_config *c)
     sb_line(&b, c->trail_fade ? "trail_fade: true" : "trail_fade: false");
     sb_line(&b, "# fall_speed_min / fall_speed_max: rows each string grows per tick.");
     sb_line(&b, "# Newton's frame counts suggest about one row per film frame; at");
-    sb_line(&b, "# speed_ms 42 that is 1.0. Not verified against the footage.");
+    sb_line(&b, "# fps 24 that is 1.0. Not verified against the footage.");
     fmt_double(c->fall_min, d); sprintf(tmp, "fall_speed_min: %s", d); sb_line(&b, tmp);
     fmt_double(c->fall_max, d); sprintf(tmp, "fall_speed_max: %s", d); sb_line(&b, tmp);
     sb_line(&b, "# flip_percent: chance each katakana is mirrored. The film mirrors all");
@@ -780,7 +792,8 @@ int config_update_keys(const char *path, const rain_config *c, const config_kv *
         if (content && p[content - 1] == '\r') content--;
         if (line_key(p, content, key, sizeof key)) {
             for (i = 0; i < n; i++) {
-                if (!strcmp(key, kv[i].key)) {
+                /* saving fps: also replaces an old speed_ms: line */
+                if (!strcmp(key, kv[i].key) || (!strcmp(kv[i].key, "fps") && !strcmp(key, "speed_ms"))) {
                     sb_add(&out, kv[i].key); sb_add(&out, ": "); sb_add(&out, kv[i].value);
                     done[i] = 1; replaced = 1;
                     break;

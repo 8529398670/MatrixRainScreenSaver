@@ -73,7 +73,7 @@ the per-user config (see Install) to it. Lookup order: `MATRIXRAIN_CONFIG`
 (or `--config FILE` on Linux), then `config.yaml` next to the program,
 then the per-user file.
 
-Keys: `speed_ms`, `font_name`, `font_size`, `cell_width_percent`,
+Keys: `fps`, `font_name`, `font_size`, `cell_width_percent`,
 `density_percent`, `trail_min`, `trail_max`, `trail_fade`,
 `fall_speed_min`, `fall_speed_max`, `flip_percent`, `mutate_every_ticks`,
 `changing_percent`, `glow_percent`, `cursor_percent`, `theme`, `themes`,
@@ -293,7 +293,7 @@ Carl Newton) shows the real pattern, and the engine follows it:
   0 turns it off; it costs roughly 10 ms per 1080p frame).
 - **Tall cells.** The glyphs are taller than they are wide; columns are
   75% of the glyph height (`cell_width_percent`).
-- **Speed.** One tick is one film frame (`speed_ms: 42`, 24 fps), and
+- **Speed.** One tick is one film frame (`fps: 24`), and
   strings grow 0.5–1 row per frame. Newton's frame counts suggest about
   one row per frame; the exact speed hasn't been measured against the
   footage. (An earlier "6.7 seconds per screen" figure came from the

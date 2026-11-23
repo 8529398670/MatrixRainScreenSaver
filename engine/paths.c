@@ -274,6 +274,6 @@ void rain_load_config(rain_config *cfg, const char *exe_dir, char *loaded_from, 
     }
     if (cfg->debug_log) {
         open_log();
-        rain_log("config loaded from %s speed=%d font=%d glyphs=%d", path, cfg->speed_ms, cfg->font_size, cfg->glyph_count);
+        rain_log("config loaded from %s fps=%d font=%d glyphs=%d", path, cfg->fps, cfg->font_size, cfg->glyph_count);
     }
 }

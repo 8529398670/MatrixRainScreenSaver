@@ -395,7 +395,7 @@ static void save_settings(void)
     wsprintfA(speed, "%d", (int)SendMessageW(g_trk_speed, TBM_GETPOS, 0, 0));
     wsprintfA(size, "%d", (int)SendMessageW(g_trk_size, TBM_GETPOS, 0, 0));
     wsprintfA(density, "%d", (int)SendMessageW(g_trk_density, TBM_GETPOS, 0, 0));
-    kv[0].key = "speed_ms"; kv[0].value = speed;
+    kv[0].key = "fps"; kv[0].value = speed;
     kv[1].key = "font_size"; kv[1].value = size;
     kv[2].key = "density_percent"; kv[2].value = density;
     if (!rain_resolve_config(path, sizeof path, g_exe_dir) && !rain_user_config_path(path, sizeof path)) return;
@@ -476,8 +476,8 @@ static int run_settings(HINSTANCE inst, HWND owner)
                            rc.right - rc.left, rc.bottom - rc.top, owner, NULL, inst, NULL);
     if (!hwnd) return 1;
 
-    add_ctl(hwnd, L"STATIC", L"Fall speed (lower = faster)", 0, 16, 12, 320, 18, 0, font, dpi);
-    g_trk_speed = add_slider(hwnd, 30, 330, ID_SPEED, 20, 150, 10, g_cfg.speed_ms, font, dpi);
+    add_ctl(hwnd, L"STATIC", L"Speed (frames per second, 24 = the film)", 0, 16, 12, 320, 18, 0, font, dpi);
+    g_trk_speed = add_slider(hwnd, 30, 330, ID_SPEED, 7, 50, 1, g_cfg.fps, font, dpi);
     add_ctl(hwnd, L"STATIC", L"Glyph size", 0, 16, 70, 320, 18, 0, font, dpi);
     g_trk_size = add_slider(hwnd, 88, 330, ID_SIZE, 12, 32, 2, g_cfg.font_size, font, dpi);
     add_ctl(hwnd, L"STATIC", L"How many columns", 0, 16, 128, 320, 18, 0, font, dpi);

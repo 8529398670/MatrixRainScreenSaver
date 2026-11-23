@@ -41,7 +41,9 @@ typedef struct rain_palette {
 } rain_palette;
 
 typedef struct rain_config {
-    int speed_ms;           /* tick interval, 20-150 */
+    int fps;                /* ticks (frames) per second, 7-50; 24 = the film */
+    int speed_ms;           /* tick interval in ms, from fps (1000 / fps) */
+    int fps_given;          /* 1 once an `fps:` line was read: it beats an old speed_ms: */
     char font_name[RAIN_FONT_NAME_MAX]; /* UTF-8 font family */
     int font_size;          /* glyph cell size in (logical) pixels, 12-32 */
     int density;            /* % of columns filled, 30-100 */

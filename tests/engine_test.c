@@ -298,6 +298,45 @@ static void test_config_parse(void)
     CHECK(c.glyph_count == 4 && c.glyphs[2] == ':' && c.glyphs_overridden);
 }
 
+static void test_fps(void)
+{
+    rain_config c = base_cfg();
+    CHECK(c.fps == 24 && c.speed_ms == 42);   /* the film's frame rate */
+    config_parse(&c, "fps: 17\n");
+    CHECK(c.fps == 17 && c.speed_ms == 59);
+    c = base_cfg();
+    config_parse(&c, "fps: 99\n");           /* clamped */
+    CHECK(c.fps == 50 && c.speed_ms == 20);
+    c = base_cfg();
+    config_parse(&c, "speed_ms: 58\n");      /* the old key still works */
+    CHECK(c.speed_ms == 58 && c.fps == 17);
+    c = base_cfg();
+    config_parse(&c, "fps: 30\nspeed_ms: 100\n"); /* fps wins, either order */
+    CHECK(c.fps == 30 && c.speed_ms == 33);
+    c = base_cfg();
+    config_parse(&c, "speed_ms: 100\nfps: 30\n");
+    CHECK(c.fps == 30 && c.speed_ms == 33);
+}
+
+static void test_fps_saves_over_speed_ms(void)
+{
+    const char *path = "engine_test_tmp_fps.yaml";
+    config_kv kv[] = { { "fps", "20" } };
+    rain_config c = base_cfg();
+    FILE *f = fopen(path, "wb");
+    char buf[256];
+    size_t n;
+    fputs("# old file\nspeed_ms: 58\nfont_size: 20\n", f);
+    fclose(f);
+    CHECK(config_update_keys(path, &c, kv, 1) == 0);
+    f = fopen(path, "rb");
+    n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    CHECK(!strcmp(buf, "# old file\nfps: 20\nfont_size: 20\n"));
+    remove(path);
+}
+
 static void test_default_font(void)
 {
     rain_config c;
@@ -312,7 +351,7 @@ static void test_repo_config(void)
     CHECK(c.glyph_count == 53);   /* the film's exact 53 */
     CHECK(c.glyphs[0] == 0xFF8A); /* ﾊ */
     CHECK(c.glyphs[30] == 0x65E5); /* 日 */
-    CHECK(c.speed_ms == 42);
+    CHECK(c.fps == 24 && c.speed_ms == 42);
     CHECK(c.flip_percent == 100 && !c.trail_fade);
     /* whichever theme it picks (you change it), it's one that exists */
     CHECK(c.theme[0] && config_find_theme(&c, c.theme) >= 0 && c.theme_count >= 4);
@@ -478,12 +517,12 @@ static void test_default_text_roundtrip(void)
 {
     rain_config a = base_cfg(), b;
     char *text;
-    a.speed_ms = 77; a.fall_min = 0.35; a.fall_max = 0.6; a.themes[0].rain = 0x123456;
+    a.fps = 13; a.speed_ms = 77; a.fall_min = 0.35; a.fall_max = 0.6; a.themes[0].rain = 0x123456;
     a.wake_mouse_ms = 2500; a.wake_keys = 4;
     text = config_default_text(&a);
     config_defaults(&b);
     config_parse(&b, text);
-    CHECK(b.speed_ms == 77);
+    CHECK(b.fps == 13 && b.speed_ms == 77);
     CHECK(b.wake_mouse_ms == 2500 && b.wake_keys == 4);
     CHECK(b.fall_min > 0.349 && b.fall_min < 0.351);
     CHECK(b.fall_max > 0.599 && b.fall_max < 0.601);
@@ -535,6 +574,8 @@ int main(void)
     test_flat_trails_end();
     test_changing_strings();
     test_config_parse();
+    test_fps();
+    test_fps_saves_over_speed_ms();
     test_repo_config();
     test_default_font();
     test_themes();
